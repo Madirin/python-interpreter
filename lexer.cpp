@@ -48,3 +48,33 @@ Token Lexer::extract() {
     
     return {TokenType::END, ""};
 }
+
+Token Lexer::extract_newline() {
+    ++index;
+    column = 1;
+    ++line;
+
+    return {TokenType::NEWLINE, "\\n", line - 1, column};
+}
+
+Token Lexer::extract_indendation() {
+    int spaces = 0;
+    
+    while (index < input.size() && input[index] == ' ') {
+        spaces++;
+        index++;
+        column++;
+    }
+
+    if (spaces > indent_level) {
+        indent_level = spaces;
+        return {TokenType::INDENT, "", line, column};
+    }
+
+    if (spaces < indent_level) {
+        indent_level = spaces;
+        return {TokenType::DEDENT, "", line, column};
+    }
+
+    return extract();
+}
