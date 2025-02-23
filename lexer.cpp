@@ -80,14 +80,62 @@ Token Lexer::extract_indendation() {
 }
 
 Token Lexer::extract_identifier() {
-    std::size_t size;
-
-    while (std::isalnum(input[index + size]) || input[index + size] == '_') {
+    std::size_t size = 0;
+    
+    while (index + size < input.size() && 
+           (std::isalnum(input[index + size]) || input[index + size] == '_')) {
         size++;
         column++;
-    } 
-
+    }
+    
     std::string name(input, index, size);
     index += size;
-    return {TokenType::ID, name};
+    
+    return {TokenType::ID, name, line, column};
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+const std::unordered_map<std::string, TokenType> Lexer::triggers = {
+    {"if", TokenType::ID},
+    {"else", TokenType::ID},
+    {"elif", TokenType::ID},
+    {"while", TokenType::ID},
+    {"for", TokenType::ID},
+    {"def", TokenType::ID},
+    {"return", TokenType::ID},
+    {"class", TokenType::ID},
+    {"try", TokenType::ID},
+    {"except", TokenType::ID},
+    {"finally", TokenType::ID},
+    {"with", TokenType::ID},
+    {"as", TokenType::ID},
+    {"import", TokenType::ID},
+    {"from", TokenType::ID},
+    {"global", TokenType::ID},
+    {"nonlocal", TokenType::ID},
+    {"assert", TokenType::ID},
+    {"break", TokenType::ID},
+    {"continue", TokenType::ID},
+    {"pass", TokenType::ID},
+    {"raise", TokenType::ID},
+    {"yield", TokenType::ID},
+    {"lambda", TokenType::ID},
+    {"and", TokenType::AND},
+    {"or", TokenType::OR},
+    {"not", TokenType::NOT},
+    {"is", TokenType::IS},
+    {"in", TokenType::IN},
+    {"not in", TokenType::NOTIN},
+    {"is not", TokenType::ISNOT}
+};
