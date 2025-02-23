@@ -28,7 +28,7 @@ Token Lexer::extract() {
         }
 
         if (std::isalpha(input[index]) || input[index] == '_') {
-            return extract_indendation();
+            return extract_identifier();
         }
 
         if (std::isdigit(input[index])) {
@@ -77,4 +77,17 @@ Token Lexer::extract_indendation() {
     }
 
     return extract();
+}
+
+Token Lexer::extract_identifier() {
+    std::size_t size;
+
+    while (std::isalnum(input[index + size]) || input[index + size] == '_') {
+        size++;
+        column++;
+    } 
+
+    std::string name(input, index, size);
+    index += size;
+    return {TokenType::ID, name};
 }

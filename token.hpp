@@ -2,7 +2,7 @@
 #include <string>
 
 enum class TokenType {
-    ID, NUM, STRING, KEYWORD,
+    ID, NUM, STRING, 
     PLUS, MINUS, STAR, SLASH, DOUBLESLASH, MOD, POW,
     EQUAL, NOTEQUAL, LESS, GREATER, LESSEQUAL, GREATEREQUAL,
     AND, OR, NOT,
@@ -15,7 +15,7 @@ enum class TokenType {
     COMMA, SEMICOLON, ARROW, // , ; ->
     COLON, // :
     DOT,
-    INDENT, DEDENT, NEWLINE, COMMENT, END, // 1-2 отступы
+    INDENT, DEDENT, NEWLINE, END, // 1-2 отступы
     AT, ELLIPSIS // @, ...
 };
 

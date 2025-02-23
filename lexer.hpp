@@ -20,9 +20,14 @@ private:
 
     Token extract();
     Token extract_newline();
+    Token extract_indendation();
+    Token extract_identifier();
     Token extract_number();
     Token extract_string();
     Token extract_operator();
-    Token extract_comment();
-    Token extract_indendation();
 };
+
+
+/* if x == 10:
+    return x    
+    TOKEN(, "if") */
