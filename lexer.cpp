@@ -95,7 +95,64 @@ Token Lexer::extract_identifier() {
 }
 
 
+Token Lexer::extract_number() {
+    std::size_t size = 0;
 
+    while (index + size < input.size() && std::isdigit(input[index + size])) {
+        ++size;
+        ++column;
+    }
+
+    bool is_float = false;
+
+    // dot float
+    if (index + size < input.size() && input[index + size] == '.') {
+        is_float = true;
+        ++size;
+        ++column; 
+
+        if (index + size < input.size() && std::isdigit(input[index + size])) {
+            while (std::isdigit(input[index + size])) {
+                ++size;
+                ++column;
+            }
+        } else {
+            // 123. -> 123.0
+
+            std::string value(input, index, size);
+            index += size;
+
+            return {TokenType::NUM, value + "0", line, column};
+        }
+    }
+
+    // exp
+    if (index + size < input.size() && (input[index+size] == 'e' || input[index + size] == 'E')) {
+        is_float = true;
+        ++size;
+        ++column;
+
+        if (index + size < input.size() && (input[index + size] == '+' || input[index + size] == '-')) {
+            ++size;
+            ++column;
+        }
+
+        if (index + size < input.size() && std::isdigit(input[index + size])) {
+            while (index + size < input.size() && std::isdigit(input[index + size])) {
+                ++size;
+                ++column;
+            }
+        } else {
+            throw std::runtime_error("Invalid at line " + std::to_string(line));
+        }
+    } 
+    
+
+    std::string value(input, index, size);
+    index += size;
+
+    return {TokenType::NUM, value, line, column};
+}
 
 
 
