@@ -109,7 +109,7 @@ Token Lexer::extract_number() {
     if (index + size < input.size() && input[index + size] == '.') {
         is_float = true;
         ++size;
-        ++column; 
+        ++column;   
 
         if (index + size < input.size() && std::isdigit(input[index + size])) {
             while (std::isdigit(input[index + size])) {
@@ -155,7 +155,68 @@ Token Lexer::extract_number() {
 }
 
 
+Token Lexer::extract_number() {
+    char quota = input[index];
+    bool is_triple = false;
+    std::size_t size = 1;
+    int start_col = column;
 
+    if (index + 2 < input.size() && input[index + 1] == quota && input[index + 2] == quota) {
+        is_triple = true;
+        size += 2;
+    }
+
+    ++index;
+    ++column;
+
+    std::string value;
+    bool escape = false;
+
+    while (index < input.size()) {
+        char c = input[index];
+
+        if (!escape && c == quota) {
+            if (is_triple) {
+                index += 3;
+                column += 3;
+                break;
+            } else {
+                ++index;
+                ++column;
+                break;
+            }
+        } 
+
+        if (escape) {
+            switch (c) {
+                case 'n': value += '\n'; break;
+                case 't': value += '\t'; break;
+                case 'r': value += '\r'; break;
+                case '"': value += '"'; break;
+                case '\'': value += '\''; break;
+                case '\\': value += '\\'; break;
+                case 'b': value += '\b'; break;
+                case 'f': value += '\f'; break;
+                default: value += '\\' + c; break;
+            }
+            escape = false;
+        } else if (c = '\\') {
+            escape = true;
+        } else {
+            value += c;
+        }
+        
+        ++index;
+        ++column;
+
+        if (c == '\n') {
+            ++line;
+            column = 1;
+        }
+    }
+
+    return {TokenType::STRING, value, line, start_col};
+}
 
 
 
@@ -171,28 +232,21 @@ const std::unordered_map<std::string, TokenType> Lexer::triggers = {
     {"for", TokenType::ID},
     {"def", TokenType::ID},
     {"return", TokenType::ID},
-    {"class", TokenType::ID},
-    {"try", TokenType::ID},
-    {"except", TokenType::ID},
-    {"finally", TokenType::ID},
-    {"with", TokenType::ID},
-    {"as", TokenType::ID},
-    {"import", TokenType::ID},
-    {"from", TokenType::ID},
-    {"global", TokenType::ID},
-    {"nonlocal", TokenType::ID},
     {"assert", TokenType::ID},
     {"break", TokenType::ID},
     {"continue", TokenType::ID},
     {"pass", TokenType::ID},
-    {"raise", TokenType::ID},
-    {"yield", TokenType::ID},
-    {"lambda", TokenType::ID},
+    {"True", TokenType::ID},
+    {"False", TokenType::ID},
+    {"None", TokenType::ID},
     {"and", TokenType::AND},
     {"or", TokenType::OR},
     {"not", TokenType::NOT},
     {"is", TokenType::IS},
     {"in", TokenType::IN},
     {"not in", TokenType::NOTIN},
-    {"is not", TokenType::ISNOT}
+    {"is not", TokenType::ISNOT},
+    {"exit", TokenType::ID},
+    {"print", TokenType::ID},
+    {"input", TokenType::ID}
 };

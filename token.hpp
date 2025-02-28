@@ -12,11 +12,10 @@ enum class TokenType {
     LPAREN, RPAREN, // ()
     LBRACKET, RBRACKET, // []
     LBRACE, RBRACE, // {}
-    COMMA, SEMICOLON, ARROW, // , ; ->
+    COMMA,  // , 
     COLON, // :
     DOT,
     INDENT, DEDENT, NEWLINE, END, // 1-2 отступы
-    AT, ELLIPSIS // @, ...
 };
 
 struct Token {
