@@ -155,7 +155,7 @@ Token Lexer::extract_number() {
 }
 
 
-Token Lexer::extract_number() {
+Token Lexer::extract_string() {
     char quota = input[index];
     bool is_triple = false;
     std::size_t size = 1;
