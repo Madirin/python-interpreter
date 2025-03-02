@@ -14,13 +14,15 @@ private:
     std::size_t index = 0;
     int line = 1;
     int column = 1;
-    int indent_level = 0;
+
+    std::vector<int> indent_stack;          
+    std::vector<Token> pending_indent_tokens;
 
     static const std::unordered_map<std::string, TokenType> triggers;
 
     Token extract();
     Token extract_newline();
-    Token extract_indendation();
+    Token extract_indentation();
     Token extract_identifier();
     Token extract_number();
     Token extract_string();
