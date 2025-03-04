@@ -3,14 +3,9 @@
 #include "lexer.hpp"
 
 int main() {
-    // Пример Python-кода для теста
+    
     std::string code = R"(
-def hello():
-    print("Hello, world!")
-    x = 42
-    if x == 42:
-        print("The answer!")
-    print("no answer")
+"""markdown slash"""
 exit()
 )";
 
@@ -20,7 +15,7 @@ exit()
     // Вывод токенов
     for (const auto& token : tokens) {
         std::cout << "Token("
-                  << static_cast<int>(token.type) << ", "  // int cast чтобы увидеть enum numeric value
+                  << static_cast<int>(token.type) << ", "  
                   << "\"" << token.value << "\", "
                   << "line=" << token.line << ", "
                   << "column=" << token.column << ")\n";

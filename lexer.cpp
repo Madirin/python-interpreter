@@ -84,25 +84,32 @@ std::vector<Token> Lexer::tokenize() {
 
 Token Lexer::extract() {
     while (index < input.size()) {
+
         
-        if (!pending_indent_tokens.empty()) {
-            Token tok = pending_indent_tokens.front();
-            pending_indent_tokens.erase(pending_indent_tokens.begin());
-            return tok;
+        
+        if (at_line_start) {
+            at_line_start = false;
+            Token indentTok = extract_indentation();
+            
+            if (indentTok.type != TokenType::NEWLINE) {
+                return indentTok;
+            }
+           
         }
+
 
         // Сначала обрабатываем перевод строки
         if (input[index] == '\n') {
             return extract_newline();
         }
-        // Если начало строки (column == 1) и есть пробелы/табуляции, обрабатываем отступ
-        if (column == 1 && (input[index] == ' ' || input[index] == '\t')) {
-            return extract_indentation();
-        } else if (input[index] == ' ') {
+          
+
+        if (input[index] == ' ') {
             ++index;
             ++column;
         }
-        // Дальше обрабатываем идентификаторы, числа, строки, операторы и т.д.
+        
+        
         if (std::isalpha(input[index]) || input[index] == '_') {
             return extract_identifier();
         }
@@ -130,16 +137,13 @@ Token Lexer::extract_newline() {
     ++index;
     column = 1;
     ++line;
+    at_line_start = true;
 
     return {TokenType::NEWLINE, "\\n", line - 1, column};
 }
 
 Token Lexer::extract_indentation() {
-    if (!pending_indent_tokens.empty()) {
-        Token tok = pending_indent_tokens.front();
-        pending_indent_tokens.erase(pending_indent_tokens.begin());
-        return tok;
-    }
+    
 
     int current_spaces = 0;
     while (index < input.size() && (input[index] == ' ' || input[index] == '\t')) {
@@ -156,27 +160,28 @@ Token Lexer::extract_indentation() {
         indent_stack.push_back(current_spaces);
         return Token{TokenType::INDENT, "", line, column};
     }
-    // Если уровень уменьшился, нужно выдать один или несколько DEDENT токенов
+    
     else if (current_spaces < indent_stack.back()) {
         while (!indent_stack.empty() && indent_stack.back() > current_spaces) {
             indent_stack.pop_back();
             pending_indent_tokens.push_back(Token{TokenType::DEDENT, "", line, column});
         }
-        // Если после "выемки" из стека текущий уровень не совпадает с найденным, это ошибка отступов
+        
         if (indent_stack.empty() || indent_stack.back() != current_spaces) {
             throw std::runtime_error("Indentation error at line " + std::to_string(line));
         }
-        // Отдаём первый DEDENT из накопленного списка
+        
         Token tok = pending_indent_tokens.front();
         pending_indent_tokens.erase(pending_indent_tokens.begin());
         return tok;
     }
-    // Если отступ не изменился — просто вернуть специальный токен (например, NEWLINE) или продолжить обработку
+    
     return Token{TokenType::NEWLINE, "\\n", line, column};
 }
 
 Token Lexer::extract_identifier() {
     std::size_t size = 0;
+    int start_col = column;
     
     while (index + size < input.size() && 
            (std::isalnum(input[index + size]) || input[index + size] == '_')) {
@@ -187,12 +192,13 @@ Token Lexer::extract_identifier() {
     std::string name(input, index, size);
     index += size;
     
-    return {TokenType::ID, name, line, column};
+    return {TokenType::ID, name, line, start_col};
 }
 
 
 Token Lexer::extract_number() {
     std::size_t size = 0;
+    int start_col = column;
 
     while (index + size < input.size() && std::isdigit(input[index + size])) {
         ++size;
@@ -247,7 +253,7 @@ Token Lexer::extract_number() {
     std::string value(input, index, size);
     index += size;
 
-    return {TokenType::NUM, value, line, column};
+    return {TokenType::NUM, value, line, start_col};
 }
 
 
@@ -260,9 +266,12 @@ Token Lexer::extract_string() {
     if (index + 2 < input.size() && input[index + 1] == quota && input[index + 2] == quota) {
         is_triple = true;
         size += 2;
+        index = index + 3;
+    } else {
+        ++index;
     }
 
-    ++index;
+    
     ++column;
 
     std::string value;

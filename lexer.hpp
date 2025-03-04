@@ -14,6 +14,7 @@ private:
     std::size_t index = 0;
     int line = 1;
     int column = 1;
+    bool at_line_start = true;
 
     std::vector<int> indent_stack;          
     std::vector<Token> pending_indent_tokens;
