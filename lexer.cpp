@@ -1,7 +1,12 @@
 #include "lexer.hpp"
 #include <stdexcept>
 #include <bits/stdc++.h>
-
+//recom:
+// match eof/end (index+size < input.size) DONE
+// order:
+// keywords
+// literal
+// operator
 const std::unordered_set<std::string> two_ops = {
     "==", "!=", "<=", ">=", "//", "**", "+=", "-=", "*=", "/=",
     "%=", "&=", "|=", "^=", ">>", "<<"
@@ -11,32 +16,31 @@ const std::unordered_set<std::string> three_ops = {
     "**=", "//=", ">>=", "<<="
 };
 
-
+// not in, is not пробелы
+// if - tokentype::if
 const std::unordered_map<std::string, TokenType> Lexer::triggers = {
-    {"not in", TokenType::NOTIN},
-    {"is not", TokenType::ISNOT},
+    {"in", TokenType::IN},
     {"and", TokenType::AND},
     {"or", TokenType::OR},
     {"not", TokenType::NOT},
     {"is", TokenType::IS},
-    {"if", TokenType::ID},
-    {"else", TokenType::ID},
-    {"elif", TokenType::ID},
-    {"while", TokenType::ID},
-    {"for", TokenType::ID},
-    {"def", TokenType::ID},
-    {"return", TokenType::ID},
-    {"assert", TokenType::ID},
-    {"break", TokenType::ID},
-    {"continue", TokenType::ID},
-    {"pass", TokenType::ID},
-    {"True", TokenType::ID},
-    {"False", TokenType::ID},
-    {"None", TokenType::ID},
-    {"in", TokenType::IN},
-    {"exit", TokenType::ID},
-    {"print", TokenType::ID},
-    {"input", TokenType::ID}
+    {"if", TokenType::IF},
+    {"else", TokenType::ELSE},
+    {"elif", TokenType::ELIF},
+    {"while", TokenType::WHILE},
+    {"for", TokenType::FOR},
+    {"def", TokenType::DEF},
+    {"return", TokenType::RETURN},
+    {"assert", TokenType::ASSERT},
+    {"break", TokenType::BREAK},
+    {"continue", TokenType::CONTINUE},
+    {"pass", TokenType::PASS},
+    {"True", TokenType::BOOL}, 
+    {"False", TokenType::BOOL},
+    {"None", TokenType::NONE},
+    {"exit", TokenType::EXIT},
+    {"print", TokenType::PRINT},
+    {"input", TokenType::INPUT}
 };
 
 
@@ -58,7 +62,7 @@ const std::unordered_map<std::string, TokenType> operator_map = {
     {"&=", TokenType::AND}, {"|=", TokenType::OR}, {"^=", TokenType::NOT},
     {">>", TokenType::IS}, {"<<", TokenType::ISNOT}, {">>=", TokenType::IS}, {"<<=", TokenType::ISNOT},
 
-    // Скобки (приоритет операций)
+    
     {"(", TokenType::LPAREN}, {")", TokenType::RPAREN},
     {"[", TokenType::LBRACKET}, {"]", TokenType::RBRACKET},
     {"{", TokenType::LBRACE}, {"}", TokenType::RBRACE},
@@ -82,13 +86,23 @@ std::vector<Token> Lexer::tokenize() {
     return tokens;
 }
 
+bool Lexer::match(bool eof, std::size_t size = 0) {
+    if (eof) {
+        return index + size >= input.size();
+    } else {
+        return index + size < input.size();
+    }
+}
+
 Token Lexer::extract() {
     while (index < input.size()) {
 
+        // def hello():
+        //    x = 10
+        // exit()
         
-        
-        if (at_line_start) {
-            at_line_start = false;
+        if (input[index] == '\t') {
+            
             Token indentTok = extract_indentation();
             
             if (indentTok.type != TokenType::NEWLINE) {
@@ -99,11 +113,12 @@ Token Lexer::extract() {
 
 
         // Сначала обрабатываем перевод строки
-        if (input[index] == '\n') {
-            return extract_newline();
-        }
+        // if (input[index] == '\n') {
+        //     // newline?, 
+        //     return extract_newline();
+        // }
           
-
+        // while (input[index] == ' ')
         if (input[index] == ' ') {
             ++index;
             ++column;
@@ -146,7 +161,7 @@ Token Lexer::extract_indentation() {
     
 
     int current_spaces = 0;
-    while (index < input.size() && (input[index] == ' ' || input[index] == '\t')) {
+    while (match(false) && (input[index] == ' ' || input[index] == '\t')) {
 
         if (input[index] == '\t')
             current_spaces += 4;
@@ -156,35 +171,37 @@ Token Lexer::extract_indentation() {
         ++column;
     }
 
-    if (current_spaces > indent_stack.back()) {
-        indent_stack.push_back(current_spaces);
-        return Token{TokenType::INDENT, "", line, column};
-    }
-    
-    else if (current_spaces < indent_stack.back()) {
-        while (!indent_stack.empty() && indent_stack.back() > current_spaces) {
-            indent_stack.pop_back();
-            pending_indent_tokens.push_back(Token{TokenType::DEDENT, "", line, column});
+    if (current_spaces % 4 == 0) {
+        if (current_spaces > indent_stack.back()) {
+            indent_stack.push_back(current_spaces);
+            return Token{TokenType::INDENT, "", line, column};
         }
         
-        if (indent_stack.empty() || indent_stack.back() != current_spaces) {
-            throw std::runtime_error("Indentation error at line " + std::to_string(line));
-        }
-        
-        Token tok = pending_indent_tokens.front();
-        pending_indent_tokens.erase(pending_indent_tokens.begin());
-        return tok;
+        else if (current_spaces < indent_stack.back()) {
+            while (!indent_stack.empty() && indent_stack.back() > current_spaces) {
+                indent_stack.pop_back();
+                pending_indent_tokens.push_back(Token{TokenType::DEDENT, "", line, column});
+            }
+            
+            // parser problem
+            //if (indent_stack.empty() || indent_stack.back() != current_spaces) {
+                //throw std::runtime_error("Indentation error at line " + std::to_string(line));
+            //}
+            
+            Token tok = pending_indent_tokens.front();
+            pending_indent_tokens.erase(pending_indent_tokens.begin());
+            return tok;
+        }   
+        return Token{TokenType::NEWLINE, "\\n", line, column};
     }
-    
-    return Token{TokenType::NEWLINE, "\\n", line, column};
+    throw std::runtime_error("Indentation error at line " + std::to_string(line));
 }
 
 Token Lexer::extract_identifier() {
     std::size_t size = 0;
     int start_col = column;
     
-    while (index + size < input.size() && 
-           (std::isalnum(input[index + size]) || input[index + size] == '_')) {
+    while (match(false, size) && (std::isalnum(input[index + size]) || input[index + size] == '_')) {
         size++;
         column++;
     }
@@ -192,6 +209,13 @@ Token Lexer::extract_identifier() {
     std::string name(input, index, size);
     index += size;
     
+    // if keyword -> tokentype
+    auto it = triggers.find(name);
+
+    if (it != triggers.end()) {
+        return {it->second, name, line, start_col};
+    }
+
     return {TokenType::ID, name, line, start_col};
 }
 
@@ -200,20 +224,20 @@ Token Lexer::extract_number() {
     std::size_t size = 0;
     int start_col = column;
 
-    while (index + size < input.size() && std::isdigit(input[index + size])) {
+    while (match(false, size) && std::isdigit(input[index + size])) {
         ++size;
         ++column;
     }
 
     bool is_float = false;
 
-    // dot float
-    if (index + size < input.size() && input[index + size] == '.') {
+    // dot float 4.3231
+    if (match(false, size) && input[index + size] == '.') {
         is_float = true;
         ++size;
         ++column;   
 
-        if (index + size < input.size() && std::isdigit(input[index + size])) {
+        if (match(false, size) && std::isdigit(input[index + size])) {
             while (std::isdigit(input[index + size])) {
                 ++size;
                 ++column;
@@ -224,36 +248,45 @@ Token Lexer::extract_number() {
             std::string value(input, index, size);
             index += size;
 
-            return {TokenType::NUM, value + "0", line, column};
+            return {TokenType::FLOATNUM, value + "0", line, column};
         }
+
+        std::string value(input, index, size);
+        index += size;
+        return {TokenType::FLOATNUM, value, line, column};
     }
 
-    // exp
-    if (index + size < input.size() && (input[index+size] == 'e' || input[index + size] == 'E')) {
+    // exp / 4e-3 / tokentype:float
+    
+    if (match(false, size) && (input[index+size] == 'e' || input[index + size] == 'E')) {
         is_float = true;
         ++size;
         ++column;
 
-        if (index + size < input.size() && (input[index + size] == '+' || input[index + size] == '-')) {
+        if (match(false, size) && (input[index + size] == '+' || input[index + size] == '-')) {
             ++size;
             ++column;
         }
 
-        if (index + size < input.size() && std::isdigit(input[index + size])) {
-            while (index + size < input.size() && std::isdigit(input[index + size])) {
+        if (match(false, size) && std::isdigit(input[index + size])) {
+            while (match(false, size) && std::isdigit(input[index + size])) {
                 ++size;
                 ++column;
             }
         } else {
             throw std::runtime_error("Invalid at line " + std::to_string(line));
         }
+
+        std::string value(input, index, size);
+        index += size;
+        return {TokenType::FLOATNUM, value, line, column};
     } 
     
 
     std::string value(input, index, size);
     index += size;
 
-    return {TokenType::NUM, value, line, start_col};
+    return {TokenType::INTNUM, value, line, start_col};
 }
 
 
@@ -263,7 +296,7 @@ Token Lexer::extract_string() {
     std::size_t size = 1;
     int start_col = column;
 
-    if (index + 2 < input.size() && input[index + 1] == quota && input[index + 2] == quota) {
+    if (match(false, 2) && input[index + 1] == quota && input[index + 2] == quota) {
         is_triple = true;
         size += 2;
         index = index + 3;
@@ -277,10 +310,10 @@ Token Lexer::extract_string() {
     std::string value;
     bool escape = false;
 
-    while (index < input.size()) {
+    while (match(false)) {
         char c = input[index];
 
-        if (index >= input.size()) {
+        if (match(true)) {
             throw std::runtime_error("Unterminated string at line " + std::to_string(line));
         }
         
@@ -323,7 +356,8 @@ Token Lexer::extract_string() {
             column = 1;
         }
     }
-
+    
+    
     return {TokenType::STRING, value, line, start_col};
 }
 
@@ -334,16 +368,17 @@ Token Lexer::extract_operator() {
 
     op += input[index];
 
-    if (index + 1 < input.size()) {
+    if (match(true, 1)) {
         std::string op_two = op + input[index + 1];
 
+        // if (op_two.contains(two_ops))
         if (two_ops.find(op_two) != two_ops.end()) {
             op = op_two;
             size = 2;
         }
     }
 
-    if (index + 2 < input.size()) {
+    if (match(false, 2)) {
         std::string op_three = op + input[index + 2];
 
         if (three_ops.find(op_three) != three_ops.end()) {

@@ -21,6 +21,8 @@ private:
 
     static const std::unordered_map<std::string, TokenType> triggers;
 
+    bool match(bool eof, std::size_t size);
+
     Token extract();
     Token extract_newline();
     Token extract_indentation();
