@@ -113,10 +113,10 @@ Token Lexer::extract() {
 
 
         // Сначала обрабатываем перевод строки
-        // if (input[index] == '\n') {
-        //     // newline?, 
-        //     return extract_newline();
-        // }
+        if (input[index] == '\n') {
+             // newline?, 
+             return extract_newline();
+        }
           
         // while (input[index] == ' ')
         if (input[index] == ' ') {
