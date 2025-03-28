@@ -6,12 +6,15 @@
 
 int main() {
     
-    std::string file_name = "test.py";
+    std::string file_name = "./test.py";
     std::ifstream file(file_name);
     std::string line;
     std::string code;
+    std::cout<<"READ FROM FILE \n";
     while(std::getline(file, line)) {
+        std::cout<<"line \n";
         code += line;
+        code += '\n';
     }
 
     // for (char c: code) {
@@ -20,7 +23,7 @@ int main() {
 
     Lexer lexer(code);
     std::vector<Token> tokens = lexer.tokenize();
-
+    std::cout<<"TEST \n";
     // Вывод токенов
     for (const auto& token : tokens) {
         std::cout << "Token("

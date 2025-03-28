@@ -368,7 +368,7 @@ Token Lexer::extract_operator() {
 
     op += input[index];
 
-    if (match(true, 1)) {
+    if (match(false, 1)) {
         std::string op_two = op + input[index + 1];
 
         // if (op_two.contains(two_ops))
