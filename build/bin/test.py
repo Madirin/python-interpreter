@@ -1,9 +1,13 @@
-def joker(a):
-	so_serious = 3.14
-	while(so_serious != 0):
-		so_serious -= 1
-		a += 1.0
-	if (a > 3):
-		return True
-	else:
-		assert False
+for i in range(3):
+    print(i)
+def iteration(i, j, k):
+    while(i < j):
+        print("good")
+        k += 1
+        i += 1
+    return k
+i = 5.
+j = 3e-3
+k.a = 0
+sumer = k.a + k.b
+a[1] = 1

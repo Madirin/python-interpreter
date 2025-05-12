@@ -18,6 +18,7 @@ private:
 
     std::vector<int> indent_stack;          
     std::vector<Token> pending_indent_tokens;
+    
 
     static const std::unordered_map<std::string, TokenType> triggers;
 

@@ -101,8 +101,9 @@ Token Lexer::extract() {
         //    x = 10
         // exit()
         
-        if (input[index] == '\t') {
+        if (input[index] == '\t' || at_line_start) {
             
+            at_line_start = false;
             Token indentTok = extract_indentation();
             
             if (indentTok.type != TokenType::NEWLINE) {
@@ -183,10 +184,6 @@ Token Lexer::extract_indentation() {
                 pending_indent_tokens.push_back(Token{TokenType::DEDENT, "", line, column});
             }
             
-            // parser problem
-            //if (indent_stack.empty() || indent_stack.back() != current_spaces) {
-                //throw std::runtime_error("Indentation error at line " + std::to_string(line));
-            //}
             
             Token tok = pending_indent_tokens.front();
             pending_indent_tokens.erase(pending_indent_tokens.begin());
