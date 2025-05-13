@@ -46,7 +46,7 @@ private:
     Token extract(TokenType type);
 
     funcDecl parse_func_decl();
-    std::vector<std::string> parse_param_decl();
+    void parse_param_decl(std::vector<std::string> &pos_params, std::vector<std::pair<std::string, std::unique_ptr<Expression>>> &def_params);
 
     blockStat parse_block();
     statement parse_stat();

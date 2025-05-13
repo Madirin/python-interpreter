@@ -31,14 +31,17 @@ public:
     virtual void visit(class ExitStat &node) = 0;
     virtual void visit(class PrintStat &node) = 0;
     virtual void visit(class AssignStat &node) = 0;
-    virtual void visit(class OrExpr &node) = 0;
-    virtual void visit(class AndExpr &node) = 0;
-    virtual void visit(class NotExpr &node) = 0;
-    virtual void visit(class ComparisonExpr &node) = 0;
-    virtual void visit(class ArithExpr &node) = 0;
-    virtual void visit(class TermExpr &node) = 0;
-    virtual void visit(class FactorExpr &node) = 0;
-    virtual void visit(class PowerExpr &node) = 0;
+    // virtual void visit(class OrExpr &node) = 0;
+    // virtual void visit(class AndExpr &node) = 0;
+    // virtual void visit(class NotExpr &node) = 0;
+    // virtual void visit(class ComparisonExpr &node) = 0;
+    // virtual void visit(class ArithExpr &node) = 0;
+    // virtual void visit(class TermExpr &node) = 0;
+    // virtual void visit(class FactorExpr &node) = 0;
+    // virtual void visit(class PowerExpr &node) = 0;
+
+    virtual void visit(class UnaryExpr &node) = 0;
+    virtual void visit(class BinaryExpr &node) = 0;
     virtual void visit(class PrimaryExpr &node) = 0;
     virtual void visit(class TernaryExpr &node) = 0;
     virtual void visit(class IdExpr &node) = 0;
@@ -46,6 +49,11 @@ public:
     virtual void visit(class CallExpr &node) = 0;
     virtual void visit(class IndexExpr &node) = 0;
     virtual void visit(class AttributeExpr &node) = 0;
+
+    virtual void visit(class ListExpr &node) = 0;
+    virtual void visit(class SetExpr  &node) = 0;
+    virtual void visit(class DictExpr &node) = 0;
+
 };
 
 class ASTNode {
@@ -80,12 +88,22 @@ public:
 class FuncDecl : public Statement { 
 public:
     std::string name;
-    std::vector<std::string> params; // default params
+    std::vector<std::string> posParams; 
+    std::vector<std::pair<std::string, std::unique_ptr<Expression>>> defaultParams; // default params
     // pos_args, // opt_args
     std::unique_ptr<Statement> body;
 
-    FuncDecl(const std::string &name, const std::vector<std::string> &params, std::unique_ptr<Statement> body)
-        : name(name), params(params), body(std::move(body)) {}
+    FuncDecl(
+        const std::string &name,
+        std::vector<std::string> posParams,
+        std::vector<std::pair<std::string, std::unique_ptr<Expression>>> defaultParams,
+        std::unique_ptr<Statement> body
+    )
+        : name(name)
+        , posParams(posParams)
+        , defaultParams(std::move(defaultParams))
+        , body(std::move(body))
+    {}
     
     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
 };
@@ -146,12 +164,12 @@ public:
 // i, j, k in enumerator LOGGING
 class ForStat : public Statement {
 public:
-    std::string iterator;
+    std::vector<std::string> iterators;
     std::unique_ptr<Expression> iterable;
     std::unique_ptr<BlockStat> body;
 
-    ForStat(const std::string &iterator, std::unique_ptr<Expression> iterable, std::unique_ptr<BlockStat> body)
-        : iterator(iterator), iterable(std::move(iterable)), body(std::move(body)) {}
+    ForStat(std::vector<std::string> iterators, std::unique_ptr<Expression> iterable, std::unique_ptr<BlockStat> body)
+        : iterators(iterators), iterable(std::move(iterable)), body(std::move(body)) {}
 
     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
 };
@@ -224,55 +242,80 @@ public:
 
 // EXPRESSIONS
 
-class OrExpr : public Expression {
+class UnaryExpr : public Expression {
 public:
-    std::unique_ptr<Expression> left; // a + b + c + d
+    std::string op;
+    std::unique_ptr<Expression> operand;
 
-    // 1. make binarynode
+    UnaryExpr(std::string op, std::unique_ptr<Expression> operand)
+        : op(op), operand(std::move(operand)) {}
+
+    virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); };
+};
+
+class BinaryExpr : public Expression {
+public:
+    std::unique_ptr<Expression> left;
+    std::string op;
+    std::unique_ptr<Expression> right;
+
+    BinaryExpr(std::unique_ptr<Expression> left,
+               std::string op,
+               std::unique_ptr<Expression> right)
+        : left(std::move(left)), op(op), right(std::move(right)) {}
+
+    virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); };
+};
+
+// class OrExpr : public Expression {
+// public:
+//     std::unique_ptr<Expression> left; // a + b + c + d
+
+//     // 1. make binarynode
     
-    std::vector<std::pair<std::string, std::unique_ptr<Expression>>> rights;
+//     std::vector<std::pair<std::string, std::unique_ptr<Expression>>> rights;
 
-    OrExpr(std::unique_ptr<Expression> left) : left(std::move(left)) {}
+//     OrExpr(std::unique_ptr<Expression> left) : left(std::move(left)) {}
 
-    virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
-};
+//     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
+// };
 
-class AndExpr : public Expression {
-public:
-    std::unique_ptr<Expression> left;
-    std::vector<std::pair<std::string, std::unique_ptr<Expression>>> rights;
-    AndExpr(std::unique_ptr<Expression> left) : left(std::move(left)) {}
+// class AndExpr : public Expression {
+// public:
+//     std::unique_ptr<Expression> left;
+//     std::vector<std::pair<std::string, std::unique_ptr<Expression>>> rights;
+//     AndExpr(std::unique_ptr<Expression> left) : left(std::move(left)) {}
 
-    virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
-};
+//     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
+// };
 
-class NotExpr : public Expression {
-public:
-    std::unique_ptr<Expression> comparison;
-    NotExpr(std::unique_ptr<Expression> comparison) : comparison(std::move(comparison)) {}
+// class NotExpr : public Expression {
+// public:
+//     std::unique_ptr<Expression> comparison;
+//     NotExpr(std::unique_ptr<Expression> comparison) : comparison(std::move(comparison)) {}
 
-    virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
-};
+//     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
+// };
 
-class ComparisonExpr : public Expression {
-public:
-    std::unique_ptr<Expression> left;
-    std::vector<std::pair<std::string, std::unique_ptr<Expression>>> rights;
-    ComparisonExpr(std::unique_ptr<Expression> left) : left(std::move(left)) {}
+// class ComparisonExpr : public Expression {
+// public:
+//     std::unique_ptr<Expression> left;
+//     std::vector<std::pair<std::string, std::unique_ptr<Expression>>> rights;
+//     ComparisonExpr(std::unique_ptr<Expression> left) : left(std::move(left)) {}
 
-    virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
-};
+//     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
+// };
 
 
-class ArithExpr : public Expression {
-public:
-    std::unique_ptr<Expression> left;
-    // Пара: '+' или '-' и правый операнд
-    std::vector<std::pair<std::string, std::unique_ptr<Expression>>> rights;
-    ArithExpr(std::unique_ptr<Expression> left) : left(std::move(left)) {}
+// class ArithExpr : public Expression {
+// public:
+//     std::unique_ptr<Expression> left;
+//     // Пара: '+' или '-' и правый операнд
+//     std::vector<std::pair<std::string, std::unique_ptr<Expression>>> rights;
+//     ArithExpr(std::unique_ptr<Expression> left) : left(std::move(left)) {}
 
-    virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
-};
+//     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
+// };
 
 
 // Тернарное выражение: <expr> 'if' <expr> 'else' <expr>
@@ -314,47 +357,47 @@ public:
 };
 
 // <term> = <factor> (('*' | '/' | '//' | '%') <factor>)*
-class TermExpr : public Expression {
-public:
-    std::unique_ptr<Expression> left;
+// class TermExpr : public Expression {
+// public:
+//     std::unique_ptr<Expression> left;
     
-    std::vector<std::pair<std::string, std::unique_ptr<Expression>>> rights;
+//     std::vector<std::pair<std::string, std::unique_ptr<Expression>>> rights;
 
-    TermExpr(std::unique_ptr<Expression> left)
-        : left(std::move(left)) {}
-    virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
-};
+//     TermExpr(std::unique_ptr<Expression> left)
+//         : left(std::move(left)) {}
+//     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
+// };
 
 
-// <factor> = (('+' | '-') <factor>)? <power>
-class FactorExpr : public Expression {
-public:
+// // <factor> = (('+' | '-') <factor>)? <power>
+// class FactorExpr : public Expression {
+// public:
     
-    std::string unaryOp;
-    std::unique_ptr<Expression> operand;
+//     std::string unaryOp;
+//     std::unique_ptr<Expression> operand;
 
-    FactorExpr(const std::string &unaryOp, std::unique_ptr<Expression> operand)
-        : unaryOp(unaryOp), operand(std::move(operand)) {}
+//     FactorExpr(const std::string &unaryOp, std::unique_ptr<Expression> operand)
+//         : unaryOp(unaryOp), operand(std::move(operand)) {}
         
-    virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
-};
+//     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
+// };
 
 
-// <power> = <primary> ('**' <factor>)?
-class PowerExpr : public Expression {
-public:
-    std::unique_ptr<Expression> base;
+// // <power> = <primary> ('**' <factor>)?
+// class PowerExpr : public Expression {
+// public:
+//     std::unique_ptr<Expression> base;
     
-    std::unique_ptr<Expression> exponent;
+//     std::unique_ptr<Expression> exponent;
 
-    PowerExpr(std::unique_ptr<Expression> base)
-        : base(std::move(base)) {}
+//     PowerExpr(std::unique_ptr<Expression> base)
+//         : base(std::move(base)) {}
 
-    PowerExpr(std::unique_ptr<Expression> base, std::unique_ptr<Expression> exponent)
-        : base(std::move(base)), exponent(std::move(exponent)) {}
+//     PowerExpr(std::unique_ptr<Expression> base, std::unique_ptr<Expression> exponent)
+//         : base(std::move(base)), exponent(std::move(exponent)) {}
     
-    virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
-};
+//     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
+// };
 
 
 // <primary> = <literal_expr> | <id_expr> | <call_expr> | <index_expr> | '(' <expr> ')' | <ternary_expr>
@@ -453,6 +496,29 @@ public:
 
     AttributeExpr(std::unique_ptr<Expression> obj, std::string name) : obj(std::move(obj)), name(name) {}
 
+    virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
+};
+
+// [expr0, expr1, expr2]
+class ListExpr : public Expression {
+public:
+    std::vector<std::unique_ptr<Expression>> elems;
+    ListExpr(std::vector<std::unique_ptr<Expression>> elems) : elems(std::move(elems)) {}
+    virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
+};
+
+// {expr, expr, expr}
+class SetExpr : public Expression {
+public:
+    std::vector<std::unique_ptr<Expression>> elems;
+    SetExpr(std::vector<std::unique_ptr<Expression>> elems) : elems(std::move(elems)) {}
+    virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
+};
+
+class DictExpr : public Expression {
+public:
+    std::vector<std::pair<std::unique_ptr<Expression>, std::unique_ptr<Expression>>> items;
+    DictExpr(std::vector<std::pair<std::unique_ptr<Expression>, std::unique_ptr<Expression>>> items) : items(std::move(items)) {}
     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
 };
 

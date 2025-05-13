@@ -86,7 +86,7 @@ std::unique_ptr<TransUnit> Parser::parse() {
 }
 
 funcDecl Parser::parse_func_decl() {
-    Token deftoken = extract(TokenType::DEF);
+    extract(TokenType::DEF);
 
     Token idtoken = extract(TokenType::ID);
     
@@ -94,7 +94,10 @@ funcDecl Parser::parse_func_decl() {
 
     extract(TokenType::LPAREN);
 
-    std::vector<std::string> params = parse_param_decl();
+    std::vector<std::string> pos_params;
+    std::vector<std::pair<std::string, std::unique_ptr<Expression>>> def_params;
+
+    parse_param_decl(pos_params, def_params);
 
     extract(TokenType::RPAREN);
 
@@ -104,24 +107,31 @@ funcDecl Parser::parse_func_decl() {
 
     blockStat body = parse_block();
 
-    return std::make_unique<FuncDecl>(funcname, params, std::move(body));
+    return std::make_unique<FuncDecl>(funcname, pos_params, std::move(def_params), std::move(body));
 }
 
-std::vector<std::string> Parser::parse_param_decl() {
-    std::vector<std::string> params;
+void Parser::parse_param_decl(
+    std::vector<std::string> &pos_params, 
+    std::vector<std::pair<std::string, std::unique_ptr<Expression>>> &def_params) {
+    
 
     if (peek().type == TokenType::RPAREN) {
-        return params;
+        return;
     }
 
     do {
         
-        Token paramToken = extract(TokenType::ID);
-        params.push_back(paramToken.value);
+        Token param_token = extract(TokenType::ID);
+        std::string name = param_token.value;
+        if (match(TokenType::ASSIGN)) {
+            auto def_expr = parse_expression();
+            def_params.emplace_back(name, std::move(def_expr));
+        } else {
+            pos_params.push_back(name);
+        }
         
     } while (match(TokenType::COMMA));
 
-    return params;
 }
 
 blockStat Parser::parse_block() {
@@ -299,15 +309,19 @@ whileStat Parser::parse_while() {
 forStat Parser::parse_for() {
     
     extract(TokenType::FOR);
-    Token id = extract(TokenType::ID); // i, j, k
-    std::string for_name = id.value;
+    
+    std::vector<std::string> vars;
+    do {
+        Token id = extract(TokenType::ID);
+        vars.push_back(id.value);
+    } while (match(TokenType::COMMA));
 
     extract(TokenType::IN);
     expression iter = parse_expression();
     extract(TokenType::COLON);
     extract(TokenType::NEWLINE);
     blockStat forblock = parse_block();
-    return std::make_unique<ForStat>(for_name, std::move(iter), std::move(forblock));
+    return std::make_unique<ForStat>(vars, std::move(iter), std::move(forblock));
 }
 
 // <return_st> = 'return' <expr>? NEWLINE
@@ -392,14 +406,12 @@ expression Parser::parse_or() {
     expression left = parse_and();
 
     while (!(is_end()) && peek().type == TokenType::OR ) {
-        Token op = advance();
+        std::string op = advance().value;
         expression right = parse_and();
-        auto or_node = std::make_unique<OrExpr>(std::move(left));
-        or_node->rights.push_back({op.value, std::move(right)});
-        left = std::move(or_node);
+        left = std::make_unique<BinaryExpr>(std::move(left), op, std::move(right));
     }
 
-    return left;
+    return left;    
 }
 
 // <and_expr> = <not_expr> ('and' <not_expr>)*
@@ -407,11 +419,9 @@ expression Parser::parse_and() {
     expression left = parse_not();
 
     while (!(is_end()) && peek().type == TokenType::AND ) {
-        Token op = advance();
+        std::string op = advance().value;
         expression right = parse_not();
-        auto and_node = std::make_unique<AndExpr>(std::move(left));
-        and_node->rights.push_back({op.value, std::move(right)});
-        left = std::move(and_node);
+        left = std::make_unique<BinaryExpr>(std::move(left), op, std::move(right));
     }
 
     return left;
@@ -421,19 +431,12 @@ expression Parser::parse_and() {
 
 expression Parser::parse_not() {
 
-    int count = 0;
-    while(!is_end() && peek().type == TokenType::NOT) {
-        advance();
-        ++count;
+    if (!is_end() && peek().type == TokenType::NOT) {
+        std::string op = advance().value;          // "not"
+        expression operand = parse_not();
+        return std::make_unique<UnaryExpr>(op, std::move(operand));
     }
-
-    expression expr = parse_comparison();
-
-    if (count % 2 == 1) {
-        expr = std::make_unique<NotExpr>(std::move(expr));
-    }
-
-    return expr;
+    return parse_comparison();
 }
 
 
@@ -448,11 +451,9 @@ expression Parser::parse_comparison() {
 
         if (op.type == TokenType::EQUAL || op.type == TokenType::NOTEQUAL || op.type == TokenType::LESS ||
             op.type == TokenType::GREATER || op.type == TokenType::LESSEQUAL || op.type == TokenType::GREATEREQUAL) { 
-                op = advance();
+                std::string op = advance().value;
                 expression right = parse_arith();
-                auto comp_node = std::make_unique<ComparisonExpr>(std::move(left));
-                comp_node->rights.push_back({op.value, std::move(right)});
-                left = std::move(comp_node);
+                left = std::make_unique<BinaryExpr>(std::move(left), op, std::move(right));
         } else {
             break;
         }
@@ -469,11 +470,9 @@ expression Parser::parse_arith() {
     while (!(is_end()) && (peek().type == TokenType::PLUS || peek().type == TokenType::MINUS 
                         || peek().type == TokenType::PLUSEQUAL || peek().type == TokenType::MINUSEQUAL)) {
 
-        Token op = advance();
+        std::string op = advance().value;
         expression right = parse_term();
-        auto arith_node = std::make_unique<ArithExpr>(std::move(left));
-        arith_node->rights.push_back({op.value, std::move(right)});
-        left = std::move(arith_node);
+        left = std::make_unique<BinaryExpr>(std::move(left), op, std::move(right));
 
     }
 
@@ -487,11 +486,9 @@ expression Parser::parse_term() {
 
     while(!(is_end()) && (peek().type == TokenType::STAR || peek().type == TokenType::SLASH ||
                           peek().type == TokenType::DOUBLESLASH || peek().type == TokenType::MOD)) {
-        Token op = advance();
+        std::string op = advance().value;
         expression right = parse_factor();
-        auto term_node = std::make_unique<TermExpr>(std::move(left));
-        term_node->rights.push_back({op.value, std::move(right)});
-        left = std::move(term_node);
+        left = std::make_unique<BinaryExpr>(std::move(left), op, std::move(right));
     }
 
     return left;
@@ -501,9 +498,9 @@ expression Parser::parse_term() {
 expression Parser::parse_factor() {
     
     if (!is_end() && (peek().type == TokenType::PLUS || peek().type == TokenType::MINUS)) {
-        Token op = advance();
-        expression operand = parse_factor(); 
-        return std::make_unique<FactorExpr>(op.value, std::move(operand));
+        std::string op = advance().value;
+        expression operand = parse_factor();
+        return std::make_unique<UnaryExpr>(op, std::move(operand));
     } else {
         return parse_power();
     }
@@ -515,9 +512,9 @@ expression Parser::parse_power() {
     expression base = parse_primary();
     
     if (!is_end() && peek().type == TokenType::POW) {
-        Token op = advance(); 
-        expression exponent = parse_factor(); 
-        return std::make_unique<PowerExpr>(std::move(base), std::move(exponent));
+        std::string op = advance().value; 
+        expression right = parse_factor();
+        base = std::make_unique<BinaryExpr>(std::move(base), op, std::move(right));
     }
 
     return base;
@@ -570,6 +567,57 @@ expression Parser::parse_primary() {
         node = parse_expression();
         extract(TokenType::RPAREN); 
     }
+    
+    else if (token.type == TokenType::LBRACKET) {
+        advance();
+        std::vector<std::unique_ptr<Expression>> elems;
+        if (peek().type != TokenType::RBRACKET) {
+            do {
+                elems.push_back(parse_expression());
+            } while (match(TokenType::COMMA));
+        } else {
+            extract(TokenType::RBRACKET);
+            return std::make_unique<ListExpr>(std::vector<std::unique_ptr<Expression>>{});
+        }
+        extract(TokenType::RBRACKET);
+        return std::make_unique<ListExpr>(std::move(elems));
+    }
+
+    else if (token.type == TokenType::LBRACE) {
+        advance();
+
+        if (peek().type == TokenType::RBRACE) {
+            advance();
+            return std::make_unique<DictExpr>(std::vector<std::pair<std::unique_ptr<Expression>, std::unique_ptr<Expression>>>{});
+        }
+
+        expression first = parse_expression();
+
+        if (match(TokenType::COLON)) { // dict
+            std::vector<std::pair<std::unique_ptr<Expression>, std::unique_ptr<Expression>>> items;
+            expression first_val = parse_expression();
+            items.emplace_back(std::move(first), std::move(first_val));
+
+            while(match(TokenType::COMMA)) {
+                expression key = parse_expression();
+                extract(TokenType::COLON);
+                expression val = parse_expression();
+                items.emplace_back(std::move(key), std::move(val));
+            }
+
+            extract(TokenType::RBRACE);
+            return std::make_unique<DictExpr>(std::move(items));
+        } else {
+            std::vector<std::unique_ptr<Expression>> elems;
+            elems.push_back(std::move(first));
+            while (match(TokenType::COMMA)) {
+                elems.push_back(parse_expression());
+            }
+            extract(TokenType::RBRACE);
+            return std::make_unique<SetExpr>(std::move(elems));
+        }
+    }
+
     else {
         throw std::runtime_error("parse_primary - unexpected token: " + token.value);
     }

@@ -28,19 +28,46 @@ void ASTPrinterVisitor::visit(TransUnit &node) {
 
 
 void ASTPrinterVisitor::visit(FuncDecl &node) {
-    append(indent() + "FuncDecl: " + node.name + "(");
-    for (size_t i = 0; i < node.params.size(); i++) {
-        append(node.params[i]);
-        if (i + 1 < node.params.size()) {
-            append(", ");
+    // Имя функции
+    append(indent() + "FuncDecl: " + node.name + "\n");
+    indentLevel++;
+
+    // Параметры
+    append(indent() + "Parameters:\n");
+    indentLevel++;
+
+    // 1) Позиционные
+    if (!node.posParams.empty()) {
+        append(indent() + "Positional:\n");
+        indentLevel++;
+        for (auto &p : node.posParams) {
+            append(indent() + p + "\n");
         }
+        indentLevel--;
     }
-    append(")\n");
+
+    // 2) С дефолтными значениями
+    if (!node.defaultParams.empty()) {
+        append(indent() + "Default:\n");
+        indentLevel++;
+        for (auto &pr : node.defaultParams) {
+            // имя параметра
+            append(indent() + pr.first + " =\n");
+            // и его выражение по умолчанию — рекурсия в дерево
+            indentLevel++;
+            pr.second->accept(*this);
+            indentLevel--;
+        }
+        indentLevel--;
+    }
+
+    // Тело
+    append(indent() + "Body:\n");
     indentLevel++;
     if (node.body) {
         node.body->accept(*this);
     }
-    indentLevel--;
+    indentLevel -= 2;
 }
 
 
@@ -108,18 +135,34 @@ void ASTPrinterVisitor::visit(WhileStat &node) {
 }
 
 
+
 void ASTPrinterVisitor::visit(ForStat &node) {
-    append(indent() + "ForStat: iterator = " + node.iterator + "\n");
+    
+    std::string iters;
+    for (size_t i = 0; i < node.iterators.size(); ++i) {
+        iters += node.iterators[i];
+        if (i + 1 < node.iterators.size()) {
+            iters += ", ";
+        }
+    }
+
+   
+    append(indent() + "ForStat: iterators = [" + iters + "]\n");
+
+    
     indentLevel++;
     append(indent() + "Iterable:\n");
     indentLevel++;
     node.iterable->accept(*this);
-    indentLevel--;
+    indentLevel -= 1;
+
+    
     append(indent() + "Body:\n");
     indentLevel++;
     node.body->accept(*this);
     indentLevel -= 2;
 }
+
 
 
 void ASTPrinterVisitor::visit(ReturnStat &node) {
@@ -197,127 +240,149 @@ void ASTPrinterVisitor::visit(AssignStat &node) {
     indentLevel--;
 }
 
-// Visitor для OrExpr
-void ASTPrinterVisitor::visit(OrExpr &node) {
-    append(indent() + "OrExpr:\n");
-    indentLevel++;
-    append(indent() + "Left:\n");
-    indentLevel++;
-    node.left->accept(*this);
-    indentLevel--;
-    for (auto &pair : node.rights) {
-        append(indent() + "Operator: " + pair.first + "\n");
-        append(indent() + "Right:\n");
-        indentLevel++;
-        pair.second->accept(*this);
-        indentLevel--;
-    }
-    indentLevel--;
-}
+// // Visitor для OrExpr
+// void ASTPrinterVisitor::visit(OrExpr &node) {
+//     append(indent() + "OrExpr:\n");
+//     indentLevel++;
+//     append(indent() + "Left:\n");
+//     indentLevel++;
+//     node.left->accept(*this);
+//     indentLevel--;
+//     for (auto &pair : node.rights) {
+//         append(indent() + "Operator: " + pair.first + "\n");
+//         append(indent() + "Right:\n");
+//         indentLevel++;
+//         pair.second->accept(*this);
+//         indentLevel--;
+//     }
+//     indentLevel--;
+// }
 
-// Visitor для AndExpr
-void ASTPrinterVisitor::visit(AndExpr &node) {
-    append(indent() + "AndExpr:\n");
-    indentLevel++;
-    append(indent() + "Left:\n");
-    indentLevel++;
-    node.left->accept(*this);
-    indentLevel--;
-    for (auto &pair : node.rights) {
-        append(indent() + "Operator: " + pair.first + "\n");
-        append(indent() + "Right:\n");
-        indentLevel++;
-        pair.second->accept(*this);
-        indentLevel--;
-    }
-    indentLevel--;
-}
-
-
-void ASTPrinterVisitor::visit(NotExpr &node) {
-    append(indent() + "NotExpr:\n");
-    indentLevel++;
-    node.comparison->accept(*this);
-    indentLevel--;
-}
+// // Visitor для AndExpr
+// void ASTPrinterVisitor::visit(AndExpr &node) {
+//     append(indent() + "AndExpr:\n");
+//     indentLevel++;
+//     append(indent() + "Left:\n");
+//     indentLevel++;
+//     node.left->accept(*this);
+//     indentLevel--;
+//     for (auto &pair : node.rights) {
+//         append(indent() + "Operator: " + pair.first + "\n");
+//         append(indent() + "Right:\n");
+//         indentLevel++;
+//         pair.second->accept(*this);
+//         indentLevel--;
+//     }
+//     indentLevel--;
+// }
 
 
-void ASTPrinterVisitor::visit(ComparisonExpr &node) {
-    append(indent() + "ComparisonExpr:\n");
-    indentLevel++;
-    append(indent() + "Left:\n");
-    indentLevel++;
-    node.left->accept(*this);
-    indentLevel--;
-    for (auto &pair : node.rights) {
-        append(indent() + "Operator: " + pair.first + "\n");
-        append(indent() + "Right:\n");
-        indentLevel++;
-        pair.second->accept(*this);
-        indentLevel--;
-    }
-    indentLevel--;
-}
+// void ASTPrinterVisitor::visit(NotExpr &node) {
+//     append(indent() + "NotExpr:\n");
+//     indentLevel++;
+//     node.comparison->accept(*this);
+//     indentLevel--;
+// }
 
 
-void ASTPrinterVisitor::visit(ArithExpr &node) {
-    append(indent() + "ArithExpr:\n");
-    indentLevel++;
-    append(indent() + "Left:\n");
-    indentLevel++;
-    node.left->accept(*this);
-    indentLevel--;
-    for (auto &pair : node.rights) {
-        append(indent() + "Operator: " + pair.first + "\n");
-        append(indent() + "Right:\n");
-        indentLevel++;
-        pair.second->accept(*this);
-        indentLevel--;
-    }
-    indentLevel--;
-}
+// void ASTPrinterVisitor::visit(ComparisonExpr &node) {
+//     append(indent() + "ComparisonExpr:\n");
+//     indentLevel++;
+//     append(indent() + "Left:\n");
+//     indentLevel++;
+//     node.left->accept(*this);
+//     indentLevel--;
+//     for (auto &pair : node.rights) {
+//         append(indent() + "Operator: " + pair.first + "\n");
+//         append(indent() + "Right:\n");
+//         indentLevel++;
+//         pair.second->accept(*this);
+//         indentLevel--;
+//     }
+//     indentLevel--;
+// }
 
 
-void ASTPrinterVisitor::visit(TermExpr &node) {
-    append(indent() + "TermExpr:\n");
-    indentLevel++;
-    append(indent() + "Left:\n");
-    indentLevel++;
-    node.left->accept(*this);
-    indentLevel--;
-    for (auto &pair : node.rights) {
-        append(indent() + "Operator: " + pair.first + "\n");
-        append(indent() + "Right:\n");
-        indentLevel++;
-        pair.second->accept(*this);
-        indentLevel--;
-    }
-    indentLevel--;
-}
+// void ASTPrinterVisitor::visit(ArithExpr &node) {
+//     append(indent() + "ArithExpr:\n");
+//     indentLevel++;
+//     append(indent() + "Left:\n");
+//     indentLevel++;
+//     node.left->accept(*this);
+//     indentLevel--;
+//     for (auto &pair : node.rights) {
+//         append(indent() + "Operator: " + pair.first + "\n");
+//         append(indent() + "Right:\n");
+//         indentLevel++;
+//         pair.second->accept(*this);
+//         indentLevel--;
+//     }
+//     indentLevel--;
+// }
 
 
-void ASTPrinterVisitor::visit(FactorExpr &node) {
-    append(indent() + "FactorExpr: " + node.unaryOp + "\n");
+// void ASTPrinterVisitor::visit(TermExpr &node) {
+//     append(indent() + "TermExpr:\n");
+//     indentLevel++;
+//     append(indent() + "Left:\n");
+//     indentLevel++;
+//     node.left->accept(*this);
+//     indentLevel--;
+//     for (auto &pair : node.rights) {
+//         append(indent() + "Operator: " + pair.first + "\n");
+//         append(indent() + "Right:\n");
+//         indentLevel++;
+//         pair.second->accept(*this);
+//         indentLevel--;
+//     }
+//     indentLevel--;
+// }
+
+
+// void ASTPrinterVisitor::visit(FactorExpr &node) {
+//     append(indent() + "FactorExpr: " + node.unaryOp + "\n");
+//     indentLevel++;
+//     node.operand->accept(*this);
+//     indentLevel--;
+// }
+
+
+// void ASTPrinterVisitor::visit(PowerExpr &node) {
+//     append(indent() + "PowerExpr:\n");
+//     indentLevel++;
+//     append(indent() + "Base:\n");
+//     indentLevel++;
+//     node.base->accept(*this);
+//     indentLevel--;
+//     if (node.exponent) {
+//         append(indent() + "Exponent:\n");
+//         indentLevel++;
+//         node.exponent->accept(*this);
+//         indentLevel--;
+//     }
+//     indentLevel--;
+// }
+
+void ASTPrinterVisitor::visit(UnaryExpr &node) {
+    // Например, for "not x" или "-a"
+    append(indent() + "UnaryExpr: op = '" + node.op + "'\n");
     indentLevel++;
     node.operand->accept(*this);
     indentLevel--;
 }
 
-
-void ASTPrinterVisitor::visit(PowerExpr &node) {
-    append(indent() + "PowerExpr:\n");
+void ASTPrinterVisitor::visit(BinaryExpr &node) {
+    // Например, for "a + b", "x and y", "p == q"
+    append(indent() + "BinaryExpr: op = '" + node.op + "'\n");
     indentLevel++;
-    append(indent() + "Base:\n");
+    append(indent() + "Left:\n");
     indentLevel++;
-    node.base->accept(*this);
+    node.left->accept(*this);
     indentLevel--;
-    if (node.exponent) {
-        append(indent() + "Exponent:\n");
-        indentLevel++;
-        node.exponent->accept(*this);
-        indentLevel--;
-    }
-    indentLevel--;
+    append(indent() + "Right:\n");
+    indentLevel++;
+    node.right->accept(*this);
+    indentLevel -= 2;
 }
 
 void ASTPrinterVisitor::visit(PrimaryExpr &node) {
@@ -465,11 +530,45 @@ void ASTPrinterVisitor::visit(IndexExpr &node) {
 }
 
 void ASTPrinterVisitor::visit(AttributeExpr &node) {
-    append(indent() + "AttributeExpr: ." + node.name + "\n");
+    append(indent() + "AttributeExpr: " + node.name + "\n");
 
     indentLevel++;
     append(indent() + "Object:\n");
     indentLevel++;
     node.obj->accept(*this);
     indentLevel -= 2;
+}
+
+void ASTPrinterVisitor::visit(ListExpr &node) {
+    append(indent() + "ListExpr:\n");
+    indentLevel++;
+    for (auto &el : node.elems) {
+        el->accept(*this);
+    }
+    indentLevel--;
+}
+
+void ASTPrinterVisitor::visit(SetExpr &node) {
+    append(indent() + "SetExpr:\n");
+    indentLevel++;
+    for (auto &el : node.elems) {
+        el->accept(*this);
+    }
+    indentLevel--;
+}
+
+void ASTPrinterVisitor::visit(DictExpr &node) {
+    append(indent() + "DictExpr:\n");
+    indentLevel++;
+    for (auto &kv : node.items) {
+        append(indent() + "Key:\n");
+        indentLevel++;
+        kv.first->accept(*this);
+        indentLevel--;
+        append(indent() + "Value:\n");
+        indentLevel++;
+        kv.second->accept(*this);
+        indentLevel--;
+    }
+    indentLevel--;
 }

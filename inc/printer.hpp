@@ -26,16 +26,24 @@ public:
     virtual void visit(ExitStat &node) override;
     virtual void visit(PrintStat &node) override; 
     virtual void visit(AssignStat &node) override;
+    virtual void visit(ListExpr &node) override;
+    virtual void visit(SetExpr  &node) override;
+    virtual void visit(DictExpr &node) override;
+
 
     
-    virtual void visit(OrExpr &node) override;
-    virtual void visit(AndExpr &node) override;
-    virtual void visit(NotExpr &node) override;
-    virtual void visit(ComparisonExpr &node) override;
-    virtual void visit(ArithExpr &node) override;
-    virtual void visit(TermExpr &node) override;
-    virtual void visit(FactorExpr &node) override;
-    virtual void visit(PowerExpr &node) override;
+    // virtual void visit(OrExpr &node) override;
+    // virtual void visit(AndExpr &node) override;
+    // virtual void visit(NotExpr &node) override;
+    // virtual void visit(ComparisonExpr &node) override;
+    // virtual void visit(ArithExpr &node) override;
+    // virtual void visit(TermExpr &node) override;
+    // virtual void visit(FactorExpr &node) override;
+    // virtual void visit(PowerExpr &node) override;
+
+    virtual void visit(UnaryExpr &node) override;
+    virtual void visit(BinaryExpr &node) override;
+    
     virtual void visit(PrimaryExpr &node) override;
     virtual void visit(TernaryExpr &node) override;
     virtual void visit(IdExpr &node) override;
