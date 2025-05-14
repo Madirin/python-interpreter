@@ -92,6 +92,8 @@ funcDecl Parser::parse_func_decl() {
     
     std::string funcname = idtoken.value;
 
+    int def_line = idtoken.line;
+
     extract(TokenType::LPAREN);
 
     std::vector<std::string> pos_params;
@@ -107,7 +109,7 @@ funcDecl Parser::parse_func_decl() {
 
     blockStat body = parse_block();
 
-    return std::make_unique<FuncDecl>(funcname, pos_params, std::move(def_params), std::move(body));
+    return std::make_unique<FuncDecl>(funcname, pos_params, std::move(def_params), std::move(body), def_line);
 }
 
 void Parser::parse_param_decl(
