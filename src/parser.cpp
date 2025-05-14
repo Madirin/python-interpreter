@@ -164,6 +164,7 @@ statement Parser::parse_stat() {
     if (cur.type == TokenType::ID) { // a.b = 1 attribute_ref
         if (peek_next().type == TokenType::LBRACKET) { // a[1] = 1
             Token idtoken = extract(TokenType::ID);
+            int assign_line = idtoken.line;
             auto idexpr = std::make_unique<IdExpr>(idtoken.value);
             extract(TokenType::LBRACKET);
             expression indexExpr = parse_expression();
@@ -173,7 +174,7 @@ statement Parser::parse_stat() {
                 expression val = parse_expression();
                 auto new_idexpr = std::make_unique<IndexExpr>(std::move(idexpr), std::move(indexExpr));
                 extract(TokenType::NEWLINE);
-                return std::make_unique<AssignStat>(std::move(new_idexpr), std::move(val));
+                return std::make_unique<AssignStat>(std::move(new_idexpr), std::move(val), assign_line);
 
             }
             else {
@@ -182,6 +183,7 @@ statement Parser::parse_stat() {
         }
         if (peek_next().type == TokenType::DOT) {
             Token idtoken = extract(TokenType::ID);
+            int assign_line = idtoken.line;
             auto idexpr = std::make_unique<IdExpr>(idtoken.value);
             advance();
             Token dot_id = extract(TokenType::ID); 
@@ -190,7 +192,7 @@ statement Parser::parse_stat() {
                 expression val = parse_expression();
                 auto new_idexpr = std::make_unique<AttributeExpr>(std::move(idexpr), dot_id.value);
                 extract(TokenType::NEWLINE);
-                return std::make_unique<AssignStat>(std::move(new_idexpr), std::move(val));
+                return std::make_unique<AssignStat>(std::move(new_idexpr), std::move(val), assign_line);
             }
             else {
                 return parse_expr_stat();
@@ -199,11 +201,12 @@ statement Parser::parse_stat() {
 
         if (!(is_end()) && peek_next().type == TokenType::ASSIGN) {
             Token idtoken = extract(TokenType::ID);
+            int assign_line = idtoken.line;
             advance();
             expression val = parse_expression();
             auto idexpr = std::make_unique<IdExpr>(idtoken.value);
             extract(TokenType::NEWLINE);
-            return std::make_unique<AssignStat>(std::move(idexpr), std::move(val));
+            return std::make_unique<AssignStat>(std::move(idexpr), std::move(val), assign_line);
         }
         else {
             return parse_expr_stat();

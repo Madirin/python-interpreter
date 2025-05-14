@@ -62,3 +62,50 @@ void SemanticAnalyzer::visit(FuncDecl &node) {
 
     scopes.leave_scope();
 }
+
+void SemanticAnalyzer::visit(BlockStat &node) {
+
+    for (auto &stat : node.statements) {
+        stat->accept(*this);
+    }
+}
+
+void SemanticAnalyzer::visit(ExprStat &node) {
+
+    if (node.expr) {
+        node.expr->accept(*this);
+    }
+}
+
+void SemanticAnalyzer::visit(AssignStat &node) {
+
+    if (auto id = dynamic_cast<IdExpr*>(node.left.get())) {
+
+        if(!scopes.lookup_local(id->name)) {
+            Symbol sym;
+            sym.name = id->name;
+            sym.type = SymbolType::Variable;
+
+            sym.decl = &node;
+            scopes.insert(sym);
+        }
+        // если есть, то просто заменяется
+    }
+
+    else if (auto attr = dynamic_cast<AttributeExpr*>(node.left.get())) {
+        attr->obj->accept(*this);
+    }
+
+    else if (auto idx = dynamic_cast<IndexExpr*>(node.left.get())) {
+        idx->base->accept(*this);
+        idx->index->accept(*this);
+    }
+
+    else {
+        reporter.add_error("Линия " + std::to_string(node.line) + ": Недопустимое назначение (AssignStat error)");
+    }
+
+    if (node.right) {
+        node.right->accept(*this);
+    }
+}

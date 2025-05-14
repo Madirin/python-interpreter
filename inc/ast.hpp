@@ -297,8 +297,9 @@ class AssignStat : public Statement {
 public:
     std::unique_ptr<Expression> left;
     std::unique_ptr<Expression> right;
+    int line;
             
-    AssignStat(std::unique_ptr<Expression> left, std::unique_ptr<Expression> right): left(std::move(left)), right(std::move(right)) {}
+    AssignStat(std::unique_ptr<Expression> left, std::unique_ptr<Expression> right, int line): left(std::move(left)), right(std::move(right)), line(line) {}
 
     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
 };
