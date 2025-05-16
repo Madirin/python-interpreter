@@ -109,3 +109,12 @@ void SemanticAnalyzer::visit(AssignStat &node) {
         node.right->accept(*this);
     }
 }
+
+void SemanticAnalyzer::visit(IdExpr &node) {
+
+    Symbol *sym = scopes.lookup(node.name);
+
+    if (!sym) {
+        reporter.add_error("Line " + std::to_string(node.line) + ": name '" + node.name + "' is not defined");
+    }
+}

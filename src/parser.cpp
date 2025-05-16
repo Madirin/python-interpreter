@@ -165,7 +165,7 @@ statement Parser::parse_stat() {
         if (peek_next().type == TokenType::LBRACKET) { // a[1] = 1
             Token idtoken = extract(TokenType::ID);
             int assign_line = idtoken.line;
-            auto idexpr = std::make_unique<IdExpr>(idtoken.value);
+            auto idexpr = std::make_unique<IdExpr>(idtoken.value, idtoken.line);
             extract(TokenType::LBRACKET);
             expression indexExpr = parse_expression();
             extract(TokenType::RBRACKET);
@@ -183,8 +183,8 @@ statement Parser::parse_stat() {
         }
         if (peek_next().type == TokenType::DOT) {
             Token idtoken = extract(TokenType::ID);
-            int assign_line = idtoken.line;
-            auto idexpr = std::make_unique<IdExpr>(idtoken.value);
+            int assign_line, idexpr_line = idtoken.line;
+            auto idexpr = std::make_unique<IdExpr>(idtoken.value, idtoken.line);
             advance();
             Token dot_id = extract(TokenType::ID); 
             if (!(is_end()) && peek().type == TokenType::ASSIGN) {
@@ -201,10 +201,10 @@ statement Parser::parse_stat() {
 
         if (!(is_end()) && peek_next().type == TokenType::ASSIGN) {
             Token idtoken = extract(TokenType::ID);
-            int assign_line = idtoken.line;
+            int assign_line, idexpr_line = idtoken.line;
             advance();
             expression val = parse_expression();
-            auto idexpr = std::make_unique<IdExpr>(idtoken.value);
+            auto idexpr = std::make_unique<IdExpr>(idtoken.value, idtoken.line);
             extract(TokenType::NEWLINE);
             return std::make_unique<AssignStat>(std::move(idexpr), std::move(val), assign_line);
         }
@@ -561,8 +561,8 @@ expression Parser::parse_primary() {
     }
     
     else if (token.type == TokenType::ID) {
-        advance();
-        auto idexpr = std::make_unique<IdExpr>(token.value);
+        Token idtoken = extract(TokenType::ID);
+        auto idexpr = std::make_unique<IdExpr>(idtoken.value, idtoken.line);
         return parse_postfix(std::move(idexpr));
     }
     

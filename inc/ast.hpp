@@ -286,9 +286,13 @@ public:
 class IdExpr : public Expression {
 public:
     std::string name;
+    int line;
 
-    IdExpr(const std::string &name)
-        : name(name) {}
+    IdExpr(const std::string &name, int line)
+        : name(name), line(line) {}
+
+    explicit IdExpr(const std::string &name)
+      : name(name), line(0) {}
 
     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
 };
