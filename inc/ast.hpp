@@ -241,9 +241,10 @@ class UnaryExpr : public Expression {
 public:
     std::string op;
     std::unique_ptr<Expression> operand;
+    int line;
 
-    UnaryExpr(std::string op, std::unique_ptr<Expression> operand)
-        : op(op), operand(std::move(operand)) {}
+    UnaryExpr(std::string op, std::unique_ptr<Expression> operand, int line)
+        : op(op), operand(std::move(operand)), line(line) {}
 
     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); };
 };
@@ -253,11 +254,13 @@ public:
     std::unique_ptr<Expression> left;
     std::string op;
     std::unique_ptr<Expression> right;
+    int line;
 
     BinaryExpr(std::unique_ptr<Expression> left,
                std::string op,
-               std::unique_ptr<Expression> right)
-        : left(std::move(left)), op(op), right(std::move(right)) {}
+               std::unique_ptr<Expression> right, 
+               int line)
+        : left(std::move(left)), op(op), right(std::move(right)), line(line) {}
 
     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); };
 };
@@ -386,12 +389,13 @@ public:
     // enum class LiteralType { INT, FLOAT, STRING, BOOL, NONE };
     using Value = std::variant<int, double, std::string, bool, std::monostate>;
     Value value;
+    int line;
 
-    LiteralExpr(int v): value(v) {}
-    LiteralExpr(double v): value(v) {}
-    LiteralExpr(std::string v): value(v) {}
-    LiteralExpr(bool v): value(v) {}
-    LiteralExpr(): value(std::monostate{}) {}
+    LiteralExpr(int v, int line): value(v), line(line) {}
+    LiteralExpr(double v, int line): value(v), line(line) {}
+    LiteralExpr(std::string v, int line): value(v), line(line) {}
+    LiteralExpr(bool v, int line): value(v), line(line) {}
+    LiteralExpr(int line): value(std::monostate{}), line(line) {}
 
         
     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }

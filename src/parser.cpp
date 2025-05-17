@@ -411,9 +411,10 @@ expression Parser::parse_or() {
     expression left = parse_and();
 
     while (!(is_end()) && peek().type == TokenType::OR ) {
+        int orline = peek().line;
         std::string op = advance().value;
         expression right = parse_and();
-        left = std::make_unique<BinaryExpr>(std::move(left), op, std::move(right));
+        left = std::make_unique<BinaryExpr>(std::move(left), op, std::move(right), orline);
     }
 
     return left;    
@@ -424,9 +425,10 @@ expression Parser::parse_and() {
     expression left = parse_not();
 
     while (!(is_end()) && peek().type == TokenType::AND ) {
+        int andline = peek().line;
         std::string op = advance().value;
         expression right = parse_not();
-        left = std::make_unique<BinaryExpr>(std::move(left), op, std::move(right));
+        left = std::make_unique<BinaryExpr>(std::move(left), op, std::move(right), andline);
     }
 
     return left;
@@ -437,9 +439,10 @@ expression Parser::parse_and() {
 expression Parser::parse_not() {
 
     if (!is_end() && peek().type == TokenType::NOT) {
+        int uline = peek().line;
         std::string op = advance().value;          // "not"
         expression operand = parse_not();
-        return std::make_unique<UnaryExpr>(op, std::move(operand));
+        return std::make_unique<UnaryExpr>(op, std::move(operand), uline);
     }
     return parse_comparison();
 }
@@ -455,10 +458,11 @@ expression Parser::parse_comparison() {
 
 
         if (op.type == TokenType::EQUAL || op.type == TokenType::NOTEQUAL || op.type == TokenType::LESS ||
-            op.type == TokenType::GREATER || op.type == TokenType::LESSEQUAL || op.type == TokenType::GREATEREQUAL) { 
+            op.type == TokenType::GREATER || op.type == TokenType::LESSEQUAL || op.type == TokenType::GREATEREQUAL) {
+                int compline = peek().line;
                 std::string op = advance().value;
                 expression right = parse_arith();
-                left = std::make_unique<BinaryExpr>(std::move(left), op, std::move(right));
+                left = std::make_unique<BinaryExpr>(std::move(left), op, std::move(right), compline);
         } else {
             break;
         }
@@ -475,9 +479,10 @@ expression Parser::parse_arith() {
     while (!(is_end()) && (peek().type == TokenType::PLUS || peek().type == TokenType::MINUS 
                         || peek().type == TokenType::PLUSEQUAL || peek().type == TokenType::MINUSEQUAL)) {
 
+        int arithline = peek().line;
         std::string op = advance().value;
         expression right = parse_term();
-        left = std::make_unique<BinaryExpr>(std::move(left), op, std::move(right));
+        left = std::make_unique<BinaryExpr>(std::move(left), op, std::move(right), arithline);
 
     }
 
@@ -491,9 +496,10 @@ expression Parser::parse_term() {
 
     while(!(is_end()) && (peek().type == TokenType::STAR || peek().type == TokenType::SLASH ||
                           peek().type == TokenType::DOUBLESLASH || peek().type == TokenType::MOD)) {
+        int termline = peek().line;
         std::string op = advance().value;
         expression right = parse_factor();
-        left = std::make_unique<BinaryExpr>(std::move(left), op, std::move(right));
+        left = std::make_unique<BinaryExpr>(std::move(left), op, std::move(right), termline);
     }
 
     return left;
@@ -503,9 +509,10 @@ expression Parser::parse_term() {
 expression Parser::parse_factor() {
     
     if (!is_end() && (peek().type == TokenType::PLUS || peek().type == TokenType::MINUS)) {
+        int uline = peek().line;
         std::string op = advance().value;
         expression operand = parse_factor();
-        return std::make_unique<UnaryExpr>(op, std::move(operand));
+        return std::make_unique<UnaryExpr>(op, std::move(operand), uline);
     } else {
         return parse_power();
     }
@@ -517,9 +524,10 @@ expression Parser::parse_power() {
     expression base = parse_primary();
     
     if (!is_end() && peek().type == TokenType::POW) {
+        int powline = peek().line;
         std::string op = advance().value; 
         expression right = parse_factor();
-        base = std::make_unique<BinaryExpr>(std::move(base), op, std::move(right));
+        base = std::make_unique<BinaryExpr>(std::move(base), op, std::move(right), powline);
     }
 
     return base;
@@ -534,30 +542,30 @@ expression Parser::parse_primary() {
     if (token.type == TokenType::INTNUM) {
         advance();
         int ival = std::stoi(token.value);
-        return std::make_unique<LiteralExpr>(ival);
+        return std::make_unique<LiteralExpr>(ival, token.line);
     }
     
     else if (token.type == TokenType::FLOATNUM) {
         advance();
         double dval = std::stod(token.value);
-        return std::make_unique<LiteralExpr>(dval);
+        return std::make_unique<LiteralExpr>(dval, token.line);
     }
     
     else if (token.type == TokenType::STRING) {
         advance();
         // token.value уже без кавычек, или вы можете удалить их здесь
-        return std::make_unique<LiteralExpr>(token.value);
+        return std::make_unique<LiteralExpr>(token.value, token.line);
     }
     
     else if (token.type == TokenType::BOOL) {
         advance();
         bool bval = (token.value == "True");
-        return std::make_unique<LiteralExpr>(bval);
+        return std::make_unique<LiteralExpr>(bval, token.line);
     }
     
     else if (token.type == TokenType::NONE) {
         advance();
-        return std::make_unique<LiteralExpr>(); // моностейт
+        return std::make_unique<LiteralExpr>(token.line); // моностейт
     }
     
     else if (token.type == TokenType::ID) {

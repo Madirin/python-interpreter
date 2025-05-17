@@ -11,6 +11,7 @@ class SemanticAnalyzer : public ASTVisitor {
 public:
     SemanticAnalyzer();
 
+    std::string giveme_type(Expression *) const;
     
     void analyze(TransUnit &unit);
 
