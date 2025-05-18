@@ -364,9 +364,10 @@ class CallExpr : public Expression {
 public:
     std::unique_ptr<Expression> caller;
     std::vector<std::unique_ptr<Expression>> arguments;
+    int line;
 
-    CallExpr(std::unique_ptr<Expression> caller, std::vector<std::unique_ptr<Expression>> arguments)
-        : caller(std::move(caller)), arguments(std::move(arguments)) {}
+    CallExpr(std::unique_ptr<Expression> caller, std::vector<std::unique_ptr<Expression>> arguments, int line)
+        : caller(std::move(caller)), arguments(std::move(arguments)), line(line) {}
 
     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
 };
@@ -376,9 +377,10 @@ class IndexExpr : public Expression {
 public:
     std::unique_ptr<Expression> base;  
     std::unique_ptr<Expression> index;
+    int line;
 
-    IndexExpr(std::unique_ptr<Expression> base, std::unique_ptr<Expression> index)
-        : base(std::move(base)), index(std::move(index)) {}
+    IndexExpr(std::unique_ptr<Expression> base, std::unique_ptr<Expression> index, int line)
+        : base(std::move(base)), index(std::move(index)), line(line) {}
 
     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
 };

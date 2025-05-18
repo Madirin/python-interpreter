@@ -172,7 +172,8 @@ statement Parser::parse_stat() {
             if (!(is_end()) && peek().type == TokenType::ASSIGN) {
                 advance();
                 expression val = parse_expression();
-                auto new_idexpr = std::make_unique<IndexExpr>(std::move(idexpr), std::move(indexExpr));
+                int line = peek().line;
+                auto new_idexpr = std::make_unique<IndexExpr>(std::move(idexpr), std::move(indexExpr), line);
                 extract(TokenType::NEWLINE);
                 return std::make_unique<AssignStat>(std::move(new_idexpr), std::move(val), assign_line);
 
@@ -644,14 +645,15 @@ expression Parser::parse_postfix(expression given_id) {
             extract(TokenType::LBRACKET);
             expression indexExpr = parse_expression();
             extract(TokenType::RBRACKET);
-            given_id = std::make_unique<IndexExpr>(std::move(given_id), std::move(indexExpr));
+            int line = peek().line;
+            given_id = std::make_unique<IndexExpr>(std::move(given_id), std::move(indexExpr), line);
         } else if (peek().type == TokenType::DOT) {
             advance();
             Token id = extract(TokenType::ID);
             given_id = std::make_unique<AttributeExpr>(std::move(given_id), id.value);
         } else if (peek().type == TokenType::LPAREN){
             extract(TokenType::LPAREN);
-    
+            int line = peek().line;
             std::vector<std::unique_ptr<Expression>> arguments;
     
             if (peek().type != TokenType::RPAREN) {
@@ -663,7 +665,7 @@ expression Parser::parse_postfix(expression given_id) {
             }
 
             extract(TokenType::RPAREN);    
-            given_id = std::make_unique<CallExpr>(std::move(given_id), std::move(arguments));
+            given_id = std::make_unique<CallExpr>(std::move(given_id), std::move(arguments), line);
         } else {
             break;
         }
@@ -700,6 +702,7 @@ expression Parser::parse_call(expression caller) {
         }
     }
 
+    int line = peek().line;
     extract(TokenType::RPAREN);    
-    return std::make_unique<CallExpr>(std::move(caller), std::move(arguments));
+    return std::make_unique<CallExpr>(std::move(caller), std::move(arguments), line);
 }

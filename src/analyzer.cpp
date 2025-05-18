@@ -240,3 +240,108 @@ void SemanticAnalyzer::visit(UnaryExpr &node) {
 
     reporter.add_error("line " + std::to_string(node.line) + " SyntaxError: invalid syntax '" + node.op + "'");
 }
+
+
+void SemanticAnalyzer::visit(CallExpr &node) {
+    
+    node.caller->accept(*this);
+
+    for (auto &arg : node.arguments) {
+        arg->accept(*this);
+    }
+
+    if (auto id = dynamic_cast<IdExpr*>(node.caller.get())) {
+        Symbol *sym = scopes.lookup(id->name);
+
+        // node.caller->accept проверит сущестование имени
+
+        if (sym->type != SymbolType::Function) {
+            reporter.add_error(
+            "Line " + std::to_string(node.line) + " TypeError: '" + id->name + "' object is not callable"
+            );
+        }
+
+        auto funcdecl = dynamic_cast<FuncDecl*>(sym->decl);
+
+        size_t pos_params = funcdecl->posParams.size();
+        size_t def_params = funcdecl->defaultParams.size();
+        size_t input = node.arguments.size();
+
+        if (input < pos_params) {
+            size_t miss_count = pos_params - input;
+
+            std::vector<std::string> miss_names;
+
+            for (size_t i = input; i < pos_params; i++) {
+                miss_names.push_back("'" + funcdecl->posParams[i] + "'");
+            }
+
+            std::string total;
+
+            if (miss_count == 1) {
+                total = miss_names[0];
+            } else {
+                for (size_t i = 0; i < miss_names.size(); i++) {
+                    total += miss_names[i];
+                    if (i + 1 < miss_names.size()) total += " and ";
+                }
+            }
+
+            reporter.add_error(
+                "Line " + std::to_string(node.line) + " TypeError: " + funcdecl->name + "() missing " + std::to_string(miss_count)
+                + " required positional argument: " + total);
+        }
+
+        if (input > pos_params + def_params) {
+            reporter.add_error(
+                "Line " + std::to_string(node.line) +
+                "TypeError: " + funcdecl->name + "() takes from " + std::to_string(pos_params) + " to " 
+                + std::to_string(def_params) + " positional arguments but " + std::to_string(input) + " were given"
+            );
+        }
+    }
+}
+
+void SemanticAnalyzer::visit(IndexExpr &node) {
+
+    node.base->accept(*this);
+    node.index->accept(*this);
+
+    auto type_error = [&](const std::string &msg) {
+        reporter.add_error(
+            "Line " + std::to_string(node.line) + " TypeError: " + msg
+        );
+    };
+
+    if (auto lit = dynamic_cast<LiteralExpr*>(node.base.get())) {
+        if (std::holds_alternative<std::string>(lit->value)) {
+            if (auto idxlit = dynamic_cast<LiteralExpr*>(node.index.get())) {
+                if (!std::holds_alternative<int>(idxlit->value)) {
+                    type_error("string indices must be integers");
+                }
+            }
+
+            return; // runtime thing
+        }
+
+        type_error("'" + giveme_type(node.base.get()) + "' object is not subscriptable");
+    }
+
+    if (dynamic_cast<ListExpr*>(node.base.get())) {
+        if (auto idxlit = dynamic_cast<LiteralExpr*>(node.index.get())) {
+            if (!std::holds_alternative<int>(idxlit->value)) {
+                    type_error("list indices must be integers");
+            }
+        }
+        return; // runtime thing
+    }
+
+    if (dynamic_cast<DictExpr*>(node.base.get())) {
+        return;
+    }
+
+    if (dynamic_cast<SetExpr*>(node.base.get())) {
+        type_error("'set' object is not subscriptable");
+        return;
+    }
+}
