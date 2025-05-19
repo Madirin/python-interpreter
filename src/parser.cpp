@@ -191,7 +191,8 @@ statement Parser::parse_stat() {
             if (!(is_end()) && peek().type == TokenType::ASSIGN) {
                 advance();
                 expression val = parse_expression();
-                auto new_idexpr = std::make_unique<AttributeExpr>(std::move(idexpr), dot_id.value);
+                int line = peek().line;
+                auto new_idexpr = std::make_unique<AttributeExpr>(std::move(idexpr), dot_id.value, line);
                 extract(TokenType::NEWLINE);
                 return std::make_unique<AssignStat>(std::move(new_idexpr), std::move(val), assign_line);
             }
@@ -602,7 +603,8 @@ expression Parser::parse_primary() {
 
         if (peek().type == TokenType::RBRACE) {
             advance();
-            return std::make_unique<DictExpr>(std::vector<std::pair<std::unique_ptr<Expression>, std::unique_ptr<Expression>>>{});
+            int line = peek().line;
+            return std::make_unique<DictExpr>(std::vector<std::pair<std::unique_ptr<Expression>, std::unique_ptr<Expression>>>{}, line);
         }
 
         expression first = parse_expression();
@@ -619,16 +621,19 @@ expression Parser::parse_primary() {
                 items.emplace_back(std::move(key), std::move(val));
             }
 
+            int line = peek().line;
             extract(TokenType::RBRACE);
-            return std::make_unique<DictExpr>(std::move(items));
+            return std::make_unique<DictExpr>(std::move(items), line);
         } else {
             std::vector<std::unique_ptr<Expression>> elems;
             elems.push_back(std::move(first));
             while (match(TokenType::COMMA)) {
                 elems.push_back(parse_expression());
             }
+
+            int line = peek().line;
             extract(TokenType::RBRACE);
-            return std::make_unique<SetExpr>(std::move(elems));
+            return std::make_unique<SetExpr>(std::move(elems), line);
         }
     }
 
@@ -650,7 +655,8 @@ expression Parser::parse_postfix(expression given_id) {
         } else if (peek().type == TokenType::DOT) {
             advance();
             Token id = extract(TokenType::ID);
-            given_id = std::make_unique<AttributeExpr>(std::move(given_id), id.value);
+            int line = peek().line;
+            given_id = std::make_unique<AttributeExpr>(std::move(given_id), id.value, line);
         } else if (peek().type == TokenType::LPAREN){
             extract(TokenType::LPAREN);
             int line = peek().line;

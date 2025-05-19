@@ -1,6 +1,10 @@
 #include "analyzer.hpp"
 
-SemanticAnalyzer::SemanticAnalyzer() : scopes(), reporter() {}
+SemanticAnalyzer::SemanticAnalyzer() : scopes(), reporter() {
+
+    scopes.insert(Symbol{"range", SymbolType::Function, nullptr, ""});
+    scopes.insert(Symbol{"print", SymbolType::Function, nullptr, ""});
+}
 
 
 std::string SemanticAnalyzer::giveme_type(Expression *expr) const {
@@ -11,6 +15,13 @@ std::string SemanticAnalyzer::giveme_type(Expression *expr) const {
         if (std::holds_alternative<std::string>(lit->value)) return "str";
         if (std::holds_alternative<bool>(lit->value)) return "bool";
         if (std::holds_alternative<std::monostate>(lit->value)) return "NoneType";
+    }
+
+    if (auto id = dynamic_cast<IdExpr*>(expr)) {
+        if (auto sym = scopes.lookup(id->name)) {
+            return sym->varType.empty() ? "object" : sym->varType;
+        }
+        return "object";
     }
 
     if (dynamic_cast<ListExpr*>(expr)) return "list";
@@ -113,12 +124,11 @@ void SemanticAnalyzer::visit(AssignStat &node) {
     }
 
     else if (auto attr = dynamic_cast<AttributeExpr*>(node.left.get())) {
-        attr->obj->accept(*this);
+        attr->accept(*this);
     }
 
     else if (auto idx = dynamic_cast<IndexExpr*>(node.left.get())) {
-        idx->base->accept(*this);
-        idx->index->accept(*this);
+        idx->accept(*this);
     }
 
     else {
@@ -127,6 +137,13 @@ void SemanticAnalyzer::visit(AssignStat &node) {
 
     if (node.right) {
         node.right->accept(*this);
+    }
+
+    if (auto id = dynamic_cast<IdExpr*>(node.left.get())) {
+        Symbol *sym = scopes.lookup_local(id->name);
+        if (sym) {
+            sym->varType = giveme_type(node.right.get());
+        }
     }
 }
 
@@ -151,57 +168,34 @@ void SemanticAnalyzer::visit(BinaryExpr &node) {
         node.right->accept(*this);
     }
 
+    std::string left_t = giveme_type(node.left.get());
+    std::string right_t = giveme_type(node.right.get());
+
     if (node.op == "in" || node.op == "not in") {
 
-        bool iterable = (dynamic_cast<ListExpr*>(node.right.get()) ||
-                        dynamic_cast<DictExpr*>(node.right.get()) ||
-                        dynamic_cast<SetExpr*>(node.right.get()));
+        bool iterable = (right_t == "list" || right_t == "dict" || right_t == "set" || right_t == "str");
 
         if (!iterable) {
-            if (auto lit = dynamic_cast<LiteralExpr*>(node.right.get())) {
-                if (std::holds_alternative<std::string>(lit->value)) {
-                    return;
-                } 
-                else {
-                    reporter.add_error(
-                    "line " + std::to_string(node.line) + " TypeError: argument of type '" + giveme_type(node.right.get()) + "' is not iterable"
-                    );
-                }
-            }
+                reporter.add_error(
+                    "line " + std::to_string(node.line) + " TypeError: argument of type '" + right_t + "' is not iterable"
+                );
         }
+
         return;
     }
 
     if (node.op == "+" || node.op == "-") {
-        bool left_num, right_num, left_str, right_str;
+        bool left_num = (left_t == "int" || left_t == "float");
+        bool right_num = (right_t == "int" || right_t == "float");
+        bool left_str = (left_t == "str");
+        bool right_str = (right_t == "str");
 
-        if (auto lit = dynamic_cast<LiteralExpr*>(node.left.get())) {
-            if (std::holds_alternative<int>(lit->value) || std::holds_alternative<double>(lit->value)) {
-                left_num = true;
-                left_str = false;
-            } 
-            else if (std::holds_alternative<std::string>(lit->value)) {
-                left_num = false;
-                left_str = true;
-            }
-        }
 
-        if (auto lit = dynamic_cast<LiteralExpr*>(node.right.get())) {
-            if (std::holds_alternative<int>(lit->value) || std::holds_alternative<double>(lit->value)) {
-                right_num = true;
-                right_str = false;
-            } 
-            else if (std::holds_alternative<std::string>(lit->value)) {
-                right_num = false;
-                right_str = true;
-            }
-        }
-
-        if (node.op != "-") {
+        if (node.op != "+") {
             if (!((left_num && right_num) || (left_str && right_str))) {
                 reporter.add_error(
                 "line " + std::to_string(node.line) + " TypeError: unsupported operand type(s) for " + node.op + ": '" + 
-                giveme_type(node.left.get()) + "' and '" + giveme_type(node.right.get()) + "'"
+                left_t + "' and '" + right_t + "'"
                 );
             }
         }
@@ -209,7 +203,7 @@ void SemanticAnalyzer::visit(BinaryExpr &node) {
             if (!(left_num && right_num) || (left_str && right_str)) {
                 reporter.add_error(
                 "line " + std::to_string(node.line) + " TypeError: unsupported operand type(s) for " + node.op + ": '" + 
-                giveme_type(node.left.get()) + "' and '" + giveme_type(node.right.get()) + "'"
+                left_t + "' and '" + right_t + "'"
                 );
             }
         }
@@ -224,16 +218,13 @@ void SemanticAnalyzer::visit(UnaryExpr &node) {
 
     // not у нас хороший
 
+    std::string t = giveme_type(node.operand.get());
+
     if (node.op == "+" || node.op == "-") {
-        if (auto lit = dynamic_cast<LiteralExpr*>(node.operand.get())) {
-            bool is_string = std::holds_alternative<std::string>(lit->value);
-            bool is_none = std::holds_alternative<std::monostate>(lit->value);
-            if (is_string || is_none) {
+        if (!(t == "int" || t == "float")) {
                 reporter.add_error(
-                "line " + std::to_string(node.line) + " TypeError: bad operand type for unary " + node.op + ": '" + 
-                giveme_type(node.operand.get()) + "'"
+                "line " + std::to_string(node.line) + " TypeError: bad operand type for unary " + node.op + ": '" + t + "'"
                 );
-            }
         }
         return;
     }
@@ -253,12 +244,24 @@ void SemanticAnalyzer::visit(CallExpr &node) {
     if (auto id = dynamic_cast<IdExpr*>(node.caller.get())) {
         Symbol *sym = scopes.lookup(id->name);
 
-        // node.caller->accept проверит сущестование имени
+        if (!sym) {
+
+            reporter.add_error(
+                "Line " + std::to_string(node.line)
+                + ": name '" + id->name + "' is not defined"
+            );
+            return;
+        }
 
         if (sym->type != SymbolType::Function) {
             reporter.add_error(
-            "Line " + std::to_string(node.line) + " TypeError: '" + id->name + "' object is not callable"
+            "Line " + std::to_string(node.line) + " TypeError: '" + id->name + "' object `" + sym->varType + "` is not callable"
             );
+            return;
+        }
+
+        if (sym->decl == nullptr) {
+            return;
         }
 
         auto funcdecl = dynamic_cast<FuncDecl*>(sym->decl);
@@ -296,7 +299,7 @@ void SemanticAnalyzer::visit(CallExpr &node) {
             reporter.add_error(
                 "Line " + std::to_string(node.line) +
                 "TypeError: " + funcdecl->name + "() takes from " + std::to_string(pos_params) + " to " 
-                + std::to_string(def_params) + " positional arguments but " + std::to_string(input) + " were given"
+                + std::to_string(pos_params + def_params) + " positional arguments but " + std::to_string(input) + " were given"
             );
         }
     }
@@ -313,35 +316,275 @@ void SemanticAnalyzer::visit(IndexExpr &node) {
         );
     };
 
-    if (auto lit = dynamic_cast<LiteralExpr*>(node.base.get())) {
-        if (std::holds_alternative<std::string>(lit->value)) {
-            if (auto idxlit = dynamic_cast<LiteralExpr*>(node.index.get())) {
-                if (!std::holds_alternative<int>(idxlit->value)) {
-                    type_error("string indices must be integers");
+    if (auto id = dynamic_cast<IdExpr*>(node.base.get())) {
+        Symbol *sym = scopes.lookup(id->name);
+        if (sym) {
+            const std::string &t = sym->varType;
+            if (t == "str") {
+                if (auto idxlit = dynamic_cast<LiteralExpr*>(node.index.get())) {
+                    if (!std::holds_alternative<int>(idxlit->value)) {
+                        type_error("string indices must be integers");
+                    }
                 }
+
+                return; // runtime thing
             }
 
-            return; // runtime thing
+            if (t == "list") {
+                if (auto idxlit = dynamic_cast<LiteralExpr*>(node.index.get())) {
+                    if (!std::holds_alternative<int>(idxlit->value)) {
+                            type_error("list indices must be integers");
+                    }
+                }
+                return; // runtime thing
+            }
+
+            if (t == "dict") {
+                return;
+            }
+
+            if (t == "set") {
+                type_error("'set' object is not subscriptable");
+                return;
+            }
         }
 
         type_error("'" + giveme_type(node.base.get()) + "' object is not subscriptable");
     }
 
-    if (dynamic_cast<ListExpr*>(node.base.get())) {
-        if (auto idxlit = dynamic_cast<LiteralExpr*>(node.index.get())) {
-            if (!std::holds_alternative<int>(idxlit->value)) {
-                    type_error("list indices must be integers");
+}
+
+
+void SemanticAnalyzer::visit(AttributeExpr &node) {
+    
+    if (node.obj) {
+        node.obj->accept(*this);
+    }
+
+    // str, int, bool, none. float no attrs
+    if (auto id = dynamic_cast<IdExpr*>(node.obj.get())) {
+        Symbol *sym = scopes.lookup(id->name);
+        if (sym) {
+            const std::string &t = sym->varType;
+            if (t == "str" || t == "int" || t == "bool" || t == "NoneType" || t == "float") {
+                reporter.add_error(
+                "Line " + std::to_string(node.line) +
+                " TypeError: '" + sym->varType +
+                "' object has no attribute '" + node.name + "'"
+                );
+            } else {
+                return;
             }
         }
-        return; // runtime thing
-    }
-
-    if (dynamic_cast<DictExpr*>(node.base.get())) {
-        return;
-    }
-
-    if (dynamic_cast<SetExpr*>(node.base.get())) {
-        type_error("'set' object is not subscriptable");
-        return;
     }
 }
+
+void SemanticAnalyzer::visit(TernaryExpr &node) {
+
+    if (node.condition) {
+        node.condition->accept(*this);
+    }
+
+    if (node.trueExpr) {
+        node.trueExpr->accept(*this);
+    }
+
+    if (node.falseExpr) {
+        node.falseExpr->accept(*this);
+    }
+
+}
+
+
+void SemanticAnalyzer::visit(LiteralExpr &node) {}
+
+void SemanticAnalyzer::visit(PrimaryExpr &node) {
+
+    switch (node.type) {
+        case PrimaryExpr::PrimaryType::LITERAL:
+            if (node.literalExpr) {
+                node.literalExpr->accept(*this);
+            }
+            break;
+
+        case PrimaryExpr::PrimaryType::ID:
+            if (node.idExpr) {
+                node.idExpr->accept(*this);
+            }
+            break;
+
+        case PrimaryExpr::PrimaryType::CALL:
+            if (node.callExpr) {
+                node.callExpr->accept(*this);
+            }
+            break;
+
+        case PrimaryExpr::PrimaryType::INDEX:
+            if (node.indexExpr) {
+                node.indexExpr->accept(*this);
+            }
+            break;
+
+        case PrimaryExpr::PrimaryType::PAREN:
+            if (node.parenExpr) {
+                node.parenExpr->accept(*this);
+            }
+            break;
+
+        case PrimaryExpr::PrimaryType::TERNARY:
+            if (node.ternaryExpr) {
+                node.ternaryExpr->accept(*this);
+            }
+            break;
+    }
+}
+
+
+void SemanticAnalyzer::visit(ListExpr &node) {
+
+    for (auto &elem : node.elems) {
+        if (elem) {
+            elem->accept(*this);
+        }
+    }
+}
+
+void SemanticAnalyzer::visit(DictExpr &node) {
+
+    for (auto &pair : node.items) {
+
+        if (pair.first) {
+            pair.first->accept(*this);
+
+            if (dynamic_cast<ListExpr*>(pair.first.get()) || dynamic_cast<DictExpr*>(pair.first.get()) || dynamic_cast<SetExpr*>(pair.first.get())) {
+                reporter.add_error(
+                "Line " + std::to_string(node.line) + " TypeError: unhashable type: '" + giveme_type(pair.first.get()) + "'"
+                );
+            }
+        }
+
+        if (pair.second) {
+            pair.second->accept(*this);
+        }
+    }
+}
+
+void SemanticAnalyzer::visit(SetExpr &node) {
+
+    for (auto &elem : node.elems) {
+        if (elem) {
+            elem->accept(*this);
+        }
+
+        if (dynamic_cast<ListExpr*>(elem.get()) || dynamic_cast<DictExpr*>(elem.get()) || dynamic_cast<SetExpr*>(elem.get())) {
+            reporter.add_error(
+                "Line " + std::to_string(node.line) + " TypeError: unhashable type: '" + giveme_type(elem.get()) + "'"
+            );
+        }
+    }
+}
+
+void SemanticAnalyzer::visit(CondStat &node) {
+
+    if (node.condition) {
+        node.condition->accept(*this);
+    }
+
+
+    if (node.ifblock) {
+        node.ifblock->accept(*this);
+    }
+
+
+    for (auto &elifPair : node.elifblocks) {
+        if (elifPair.first) {
+            elifPair.first->accept(*this);
+        }
+        if (elifPair.second) {
+            elifPair.second->accept(*this);
+        }
+    }
+
+
+    if (node.elseblock) {
+        node.elseblock->accept(*this);
+    }
+}
+
+void SemanticAnalyzer::visit(WhileStat &node) {
+
+    if (node.condition) {
+        node.condition->accept(*this);
+    }
+
+    if (node.body) {
+        node.body->accept(*this);
+    }
+}
+
+void SemanticAnalyzer::visit(ForStat &node) {
+
+    if (node.iterable) {
+        node.iterable->accept(*this);
+    }
+
+    if (auto lit = dynamic_cast<LiteralExpr*>(node.iterable.get())) {
+        if (std::holds_alternative<int>(lit->value) || std::holds_alternative<double>(lit->value) ||
+            std::holds_alternative<bool>(lit->value) || std::holds_alternative<std::monostate>(lit->value)) {
+
+                reporter.add_error(
+                    "Line " + std::to_string(lit->line) + " TypeError: '" + giveme_type(lit) + "' object is not iterable"
+                );
+        }
+    }
+
+    for (auto &var : node.iterators) {
+        if (!scopes.lookup_local(var)) {
+            Symbol sym{var, SymbolType::Variable, nullptr};
+            scopes.insert(sym);
+        }
+    }
+
+    if (node.body) {
+        node.body->accept(*this);
+    }
+} 
+
+
+void SemanticAnalyzer::visit(ReturnStat &node) {
+
+    if (node.expr) {
+        node.expr->accept(*this);
+    }
+
+}
+
+void SemanticAnalyzer::visit(BreakStat &node) {
+}
+
+void SemanticAnalyzer::visit(ContinueStat &node) {
+}
+
+void SemanticAnalyzer::visit(PassStat &node) {
+}
+
+void SemanticAnalyzer::visit(AssertStat &node) {
+
+    if (node.condition) {
+        node.condition->accept(*this);
+    }
+}
+
+void SemanticAnalyzer::visit(ExitStat &node) {
+
+    if (node.expr) {
+        node.expr->accept(*this);
+    }
+}
+
+void SemanticAnalyzer::visit(PrintStat &node) {
+    if (node.expr) {
+        node.expr->accept(*this);
+    }
+}
+

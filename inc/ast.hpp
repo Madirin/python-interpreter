@@ -407,9 +407,10 @@ class AttributeExpr : public Expression {
 public:
     std::unique_ptr<Expression> obj;
     std::string name;
+    int line;
     
 
-    AttributeExpr(std::unique_ptr<Expression> obj, std::string name) : obj(std::move(obj)), name(name) {}
+    AttributeExpr(std::unique_ptr<Expression> obj, std::string name, int line) : obj(std::move(obj)), name(name), line(line) {}
 
     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
 };
@@ -426,14 +427,16 @@ public:
 class SetExpr : public Expression {
 public:
     std::vector<std::unique_ptr<Expression>> elems;
-    SetExpr(std::vector<std::unique_ptr<Expression>> elems) : elems(std::move(elems)) {}
+    int line;
+    SetExpr(std::vector<std::unique_ptr<Expression>> elems, int line) : elems(std::move(elems)), line(line) {}
     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
 };
 
 class DictExpr : public Expression {
 public:
     std::vector<std::pair<std::unique_ptr<Expression>, std::unique_ptr<Expression>>> items;
-    DictExpr(std::vector<std::pair<std::unique_ptr<Expression>, std::unique_ptr<Expression>>> items) : items(std::move(items)) {}
+    int line;
+    DictExpr(std::vector<std::pair<std::unique_ptr<Expression>, std::unique_ptr<Expression>>> items, int line) : items(std::move(items)), line(line) {}
     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
 };
 

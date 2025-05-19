@@ -10,6 +10,8 @@ struct Symbol {
     std::string name;
     SymbolType type;
     ASTNode* decl = nullptr;
+
+    std::string varType; // int, list, str, ...
 };
 
 class SymbolTable {
