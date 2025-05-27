@@ -1,3 +1,4 @@
-x = "2"
-y = "1"
-z = x - y
+a = 1
+def a(text):
+    print(text)
+a("hello")

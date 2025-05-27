@@ -3,15 +3,19 @@
 #include <string>
 #include <unordered_map>
 #include <memory>
+#include <typeindex>
 
-enum class SymbolType {Variable, Function, Parameter};
+#include "object.hpp"
+
+enum class SymbolType {
+    Variable, Parameter, Function, BuiltinFunction
+};
 
 struct Symbol {
     std::string name;
-    SymbolType type;
+    SymbolType type = SymbolType::Variable;
+    std::shared_ptr<Object> value;
     ASTNode* decl = nullptr;
-
-    std::string varType; // int, list, str, ...
 };
 
 class SymbolTable {
@@ -36,7 +40,7 @@ public:
     }
 
     Symbol* lookup(const std::string& name) const {
-        if (auto local = lookup_local(name)) {
+        if (auto *local = lookup_local(name)) {
             return local;
         }
         if (parent) {

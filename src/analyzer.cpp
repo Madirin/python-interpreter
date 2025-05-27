@@ -51,14 +51,14 @@ void SemanticAnalyzer::visit(TransUnit &node) {
 
 void SemanticAnalyzer::visit(FuncDecl &node) {
 
-    Symbol sym;
-    sym.name = node.name;
-    sym.type = SymbolType::Function;
 
     if (auto *existing = scopes.lookup_local(node.name)) {
         existing->type = SymbolType::Function;
         existing->decl = &node;
     } else {
+        Symbol sym;
+        sym.name = node.name;
+        sym.type = SymbolType::Function;
         sym.decl = &node;
         scopes.insert(sym);
     }
