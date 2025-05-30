@@ -40,7 +40,8 @@ const std::unordered_map<std::string, TokenType> Lexer::triggers = {
     {"None", TokenType::NONE},
     {"exit", TokenType::EXIT},
     {"print", TokenType::PRINT},
-    {"input", TokenType::INPUT}
+    {"input", TokenType::INPUT},
+    {"class", TokenType::CLASS}
 };
 
 

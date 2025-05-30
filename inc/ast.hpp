@@ -46,6 +46,7 @@ public:
     virtual void visit(class ListExpr &node) = 0;
     virtual void visit(class SetExpr  &node) = 0;
     virtual void visit(class DictExpr &node) = 0;
+    virtual void visit(ClassDecl &node) = 0;
 
 };
 
@@ -440,8 +441,22 @@ public:
     virtual void accept(ASTVisitor &visitor) override { visitor.visit(*this); }
 };
 
+// <class_decl> = 'class' ID ('(' ID (',' ID)* ')')? ':' NEWLINE <block_st>
+class ClassDecl : public Statement {
+public:
+    std::string name;
+    std::vector<std::string> baseClasses;  // 0 или более имён
+    std::unique_ptr<BlockStat> body;
+    int line;
 
+    ClassDecl(std::string name, std::vector<std::string> bases, std::unique_ptr<BlockStat> body, int line): 
+        name(std::move(name)),
+        baseClasses(std::move(bases)),
+        body(std::move(body)),
+        line(line)
+    {}
 
-
-
-
+    void accept(ASTVisitor &visitor) override {
+        visitor.visit(*this);
+    }
+};

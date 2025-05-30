@@ -76,6 +76,8 @@ std::unique_ptr<TransUnit> Parser::parse() {
         // Если текущий токен DEF, это определение функции
         if (peek().type == TokenType::DEF) {
             translationUnit->units.push_back(parse_func_decl());
+        } else if (peek().type == TokenType::CLASS) {
+            translationUnit->units.push_back(parse_class_decl());
         } else {
             // Иначе, парсим инструкцию (statement)
             translationUnit->units.push_back(parse_stat());
@@ -110,6 +112,36 @@ funcDecl Parser::parse_func_decl() {
     blockStat body = parse_block();
 
     return std::make_unique<FuncDecl>(funcname, pos_params, std::move(def_params), std::move(body), def_line);
+}
+
+std::unique_ptr<ClassDecl> Parser::parse_class_decl() {
+    
+    Token classToken = advance();
+    int line = classToken.line;
+
+    
+    Token nameTok = extract(TokenType::ID);
+    std::string name = nameTok.value;
+
+    // (' A, B, ... ')
+    std::vector<std::string> bases;
+    if (match(TokenType::LPAREN)) {
+        do {
+            Token baseTok = extract(TokenType::ID);
+            bases.push_back(baseTok.value);
+        } while (match(TokenType::COMMA));
+        extract(TokenType::RPAREN);
+    }
+
+    
+    extract(TokenType::COLON);
+    extract(TokenType::NEWLINE);
+
+    
+    auto body = parse_block();
+
+    
+    return std::make_unique<ClassDecl>(name, std::move(bases), std::move(body), line);
 }
 
 void Parser::parse_param_decl(

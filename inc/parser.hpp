@@ -85,4 +85,6 @@ private:
 
     expression parse_call(expression caller);
 
+    std::unique_ptr<ClassDecl> parse_class_decl();
+
 };

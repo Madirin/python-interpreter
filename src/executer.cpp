@@ -1,97 +1,133 @@
-#include "analyzer.hpp"
-
-SemanticAnalyzer::SemanticAnalyzer() : scopes(), reporter() {
-
-    scopes.insert(Symbol{"range", SymbolType::Function, nullptr, ""});
-    scopes.insert(Symbol{"print", SymbolType::Function, nullptr, ""});
-}
-
-
-std::string SemanticAnalyzer::giveme_type(Expression *expr) const {
+#include "executor.hpp"
+#include "type_registry.hpp"
+#include "builtin_function.hpp"  
+#include "object.hpp"
+#include <memory>
+#include <iostream>
+ 
+Executor::Executor() : scopes(), reporter() {
     
-    if (auto lit = dynamic_cast<LiteralExpr*>(expr)) {
-        if (std::holds_alternative<int>(lit->value)) return "int";
-        if (std::holds_alternative<double>(lit->value)) return "float";
-        if (std::holds_alternative<std::string>(lit->value)) return "str";
-        if (std::holds_alternative<bool>(lit->value)) return "bool";
-        if (std::holds_alternative<std::monostate>(lit->value)) return "NoneType";
-    }
+    TypeRegistry::instance().registerBuiltins();
 
-    if (auto id = dynamic_cast<IdExpr*>(expr)) {
-        if (auto sym = scopes.lookup(id->name)) {
-            return sym->varType.empty() ? "object" : sym->varType;
+    auto print_fn = std::make_shared<PyBuiltinFunction>(
+        "print", [](const std::vector<ObjectPtr>& args) {
+            for (auto &a : args) {
+                std::cout << a->repr() << " ";
+                std::cout << "\n";
+                return std::make_shared<PyNone>();
+            }
         }
-        return "object";
-    }
+    );
+    scopes.insert(Symbol{"print", SymbolType::BuiltinFunction, print_Fn, nullptr});
 
-    if (dynamic_cast<ListExpr*>(expr)) return "list";
-    if (dynamic_cast<DictExpr*>(expr)) return "dict";
-    if (dynamic_cast<SetExpr*>(expr)) return "set";
-
-    return "object";
-
+    auto range_fn = std::make_shared<PyBuiltinFunction>(
+        "range", [](const std::vector<ObjectPtr>& args) {
+            int n = std::dynamic_pointer_cast<PyInt>(args[0])->get();
+            std::vector<ObjectPtr> elems;
+            for (int i = 0; i < n; i++) {
+                elems.push_back(std::make_shared<PyInt>(i));
+            }
+            return std::make_shared<PyList>(std::move(elems));
+        }
+    );
+    scopes.insert(Symbol{"range", SymbolType::BuiltinFunction, range_fn, nullptr});
 }
 
+std::shared_ptr<Object> Executor::evaluate(Expression &expr) {
+    expr.accept(*this);
+    return getValue();
+}
 
-void SemanticAnalyzer::analyze(TransUnit &unit) {
-
-    unit.accept(*this);
+void Executor::execute(TransUnit &unit) {
+    try {
+        unit.accept(*this);
+    }
+    catch (const RuntimeError &err) {
+        std::cerr << "RuntimeError: " << err.what() << "\n";
+        return;
+    }
 
     if (reporter.has_errors()) {
         reporter.print_errors();
     }
 }
 
-void SemanticAnalyzer::visit(TransUnit &node) {
-    
+void Executor::visit(TransUnit &node) {
     for (auto &unit : node.units) {
         unit->accept(*this);
     }
 }
 
-void SemanticAnalyzer::visit(FuncDecl &node) {
+void Executor::visit(FuncDecl &node) {
+    // 1) Проверяем дупликаты имён параметров
+    {
+        std::unordered_set<std::string> seen;
 
+        // позиционные
+        for (const auto &name : node.posParams) {
+            if (!seen.insert(name).second) {
+                reporter.add_error(
+                    "Line " + std::to_string(node.line)
+                    + ": duplicate parameter name '" + name
+                    + "' in function '" + node.name + "'"
+                );
+            }
+        }
+        // с default-значением
+        for (const auto &pair : node.defaultParams) {
+            const std::string &name = pair.first;
+            if (!seen.insert(name).second) {
+                reporter.add_error(
+                    "Line " + std::to_string(node.line)
+                    + ": duplicate parameter name '" + name
+                    + "' in function '" + node.name + "'"
+                );
+            }
+        }
+    }
 
-    if (auto *existing = scopes.lookup_local(node.name)) {
-        existing->type = SymbolType::Function;
-        existing->decl = &node;
+    // 2) Если были ошибки — сразу отваливаемся
+    if (reporter.has_errors()) {
+        return;
+    }
+
+    // 3) Вычисляем default-значения в текущем окружении
+    std::vector<ObjectPtr> default_values;
+    default_values.reserve(node.defaultParams.size());
+    
+    for (auto &pair : node.defaultParams) {
+        Expression *expr = pair.second.get();
+        if (expr) {
+            expr->accept(*this);
+            default_values.push_back(popValue());
+        } else {
+            default_values.push_back(std::make_shared<PyNone>());
+        }
+    }
+
+    // 4) Создаём объект функции, захватывая ТЕКУЩЕЕ ОКРУЖЕНИЕ как замыкание
+    auto fn_obj = std::make_shared<PyUserFunction>(
+        node.name,
+        &node,
+        scopes.currentTable(),    // вот это наша "environment" для замыкания
+        node.posParams,
+        std::move(default_values)
+    );
+
+    // 5) Кладём этот объект в таблицу символов _ТЕКУЩЕЙ_ области
+    Symbol sym;
+    sym.name  = node.name;
+    sym.type  = SymbolType::UserFunction;
+    sym.value = fn_obj;
+    sym.decl  = &node;
+
+    if (auto existing = scopes.lookup_local(node.name)) {
+        *existing = sym;
     } else {
-        Symbol sym;
-        sym.name = node.name;
-        sym.type = SymbolType::Function;
-        sym.decl = &node;
         scopes.insert(sym);
     }
 
-    scopes.enter_scope();
-
-    for (auto &p : node.posParams) {
-        Symbol param_sym{p, SymbolType::Parameter};
-        if (scopes.lookup_local(param_sym.name)) {
-            reporter.add_error("Линия " + std::to_string(node.line) + ": дупликат аргумент '" + param_sym.name + "' в определении функции '" + node.name);
-        } else {
-            scopes.insert(param_sym);
-        }
-    }
-
-    for (auto &d : node.defaultParams) {
-        const std::string &d_name = d.first;
-        Symbol param_sym{d_name, SymbolType::Parameter};
-        if (scopes.lookup_local(param_sym.name)) {
-            reporter.add_error("Линия " + std::to_string(node.line) + ": дупликат аргумент '" + param_sym.name + "' в определении функции '" + node.name);
-        } else {
-            scopes.insert(param_sym);
-        }
-        if (d.second) {
-            d.second->accept(*this);
-        }
-    }
-
-    if (node.body) {
-        node.body->accept(*this);
-    }
-
-    scopes.leave_scope();
+    // Никакого leave_scope() — мы не входили никуда
 }
 
 void SemanticAnalyzer::visit(BlockStat &node) {

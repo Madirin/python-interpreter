@@ -1,0 +1,9 @@
+глобальный map для встроенных типов в type_registry
+__call__ - func class 
+def f -> class func
+
+это и есть symbol_table -> std::unordered_map<std::string, Symbol> table;
+нынешняя реализация является scope, который уже нас есть.
+изменить symbol_table 
+
+object.cpp -> object.hpp
