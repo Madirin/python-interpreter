@@ -30,6 +30,10 @@ public:
     Symbol* lookup_local(const std::string& name) const {
         return current->lookup_local(name);
     }
+
+    std::shared_ptr<SymbolTable> currentTable() const {
+        return current;
+    }
     
 private:
     std::shared_ptr<SymbolTable> current;

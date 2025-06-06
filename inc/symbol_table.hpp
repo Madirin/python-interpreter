@@ -5,10 +5,11 @@
 #include <memory>
 #include <typeindex>
 
-#include "object.hpp"
+class Object;       
+struct ASTNode;
 
 enum class SymbolType {
-    Variable, Parameter, Function, BuiltinFunction
+    Variable, Parameter, Function, BuiltinFunction, UserClass
 };
 
 struct Symbol {

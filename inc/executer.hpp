@@ -1,10 +1,11 @@
 #pragma once
 
+#include "object.hpp"
 #include "ast.hpp"
 #include "scope.hpp"
 #include "error_reporter.hpp"
-#include "object.hpp"
 #include "type_registry.hpp"
+#include "executer_excepts.hpp"
 
 #include <memory>
 #include <string>
@@ -14,6 +15,9 @@
 
 class Executor : public ASTVisitor {
 public:
+
+    Scope scopes;                  // наша таблица символов / областей видимости
+
     Executor();
 
     
@@ -22,7 +26,28 @@ public:
     // вычислить одно выражение 
     std::shared_ptr<Object> evaluate(Expression &expr);
 
-   
+    void push_value(std::shared_ptr<Object> val) {
+        value_stack.push_back(std::move(val));
+    }
+
+    std::shared_ptr<Object> pop_value() {
+        if (value_stack.empty()) {
+            throw RuntimeError("pop_value : empty stack\n");
+        }
+
+        auto tmp = value_stack.back();
+        value_stack.pop_back();
+        return tmp;
+    }
+
+    std::shared_ptr<Object> peek_value() const {
+        if (value_stack.empty()) {
+            throw RuntimeError("peek_value: empty stack");
+        }
+
+        return value_stack.back();
+    }
+
 
     void visit(TransUnit  &node) override;
     void visit(FuncDecl   &node) override;
@@ -34,6 +59,7 @@ public:
     void visit(LiteralExpr&node) override;
     void visit(BinaryExpr &node) override;
     void visit(UnaryExpr  &node) override;
+    void visit(PrimaryExpr  &node) override;
     void visit(CallExpr   &node) override;
     void visit(IndexExpr  &node) override;
     void visit(AttributeExpr &node) override;
@@ -54,21 +80,8 @@ public:
     void visit(PrintStat   &node) override;
 
 private:
-    Scope scopes;                  // наша таблица символов / областей видимости
+    
     ErrorReporter reporter;        // для накопления и печати ошибок
 
-    std::shared_ptr<Object> lastValue;  // результат последнего вычисленного выражения
-
-    // Пара стека-методов, чтобы хранить значение
-    void pushValue(std::shared_ptr<Object> val)   { lastValue = std::move(val); }
-    std::shared_ptr<Object> getValue() const      { return lastValue; }
-
-    /**
-     * Исключение, используемое для прерывания обхода при встрече `return`.
-     * Внутри visit(ReturnStat) мы его бросаем,  
-     * а в visit(CallExpr) ловим, чтобы вернуть управление туда.
-     */
-    struct ReturnSignal {
-        std::shared_ptr<Object> value;
-    };
+    std::vector<std::shared_ptr<Object>> value_stack;
 };

@@ -2,58 +2,68 @@
 #include <sstream>
 #include <variant>
 
-ASTPrinterVisitor::ASTPrinterVisitor() : indentLevel(0) {}
+ASTPrinterVisitor::ASTPrinterVisitor()
+    : result("")
+    , indentLevel(0)
+{}
 
 std::string ASTPrinterVisitor::getResult() const {
     return result;
 }
 
 std::string ASTPrinterVisitor::indent() const {
-    return std::string(indentLevel * 2, ' '); // 2 пробела на уровень
+    // Каждый уровень = 2 пробела
+    return std::string(indentLevel * 2, ' ');
 }
 
 void ASTPrinterVisitor::append(const std::string &str) {
     result += str;
 }
 
-
+// ------------------------------------
+// visit(TransUnit):
+// Печатает всю единицу перевода: список «функции/классы/операторы»
+// ------------------------------------
 void ASTPrinterVisitor::visit(TransUnit &node) {
-    append("TransUnit:\n");
+    // Показываем, что это TransUnit, можем упомянуть номер строки (node.line), если нужно.
+    append("TransUnit (line = " + std::to_string(node.line) + "):\n");
     indentLevel++;
+
+    // Перебираем все внешние элементы: это либо FuncDecl, ClassDecl, либо Statement
     for (auto &unit : node.units) {
+        // unit – это unique_ptr<ASTNode>, мы вызываем accept, и будет диспатч на нужный visit(...)
         unit->accept(*this);
     }
+
     indentLevel--;
 }
 
-
+// ------------------------------------
+// visit(FuncDecl):
+// Печатает определение функции, её параметры и тело
+// ------------------------------------
 void ASTPrinterVisitor::visit(FuncDecl &node) {
-    // Имя функции
-    append(indent() + "FuncDecl: " + node.name + "\n");
+    // Строка с описанием «FuncDecl: имя (строка с def)»
+    append(indent() + "FuncDecl (line = " + std::to_string(node.line) + "): " + node.name + "\n");
     indentLevel++;
 
-    // Параметры
-    append(indent() + "Parameters:\n");
-    indentLevel++;
-
-    // 1) Позиционные
+    // Позиционные параметры
     if (!node.posParams.empty()) {
-        append(indent() + "Positional:\n");
+        append(indent() + "Positional parameters:\n");
         indentLevel++;
-        for (auto &p : node.posParams) {
-            append(indent() + p + "\n");
+        for (const auto &paramName : node.posParams) {
+            append(indent() + paramName + "\n");
         }
         indentLevel--;
     }
 
-    // 2) С дефолтными значениями
+    // Default-параметры
     if (!node.defaultParams.empty()) {
-        append(indent() + "Default:\n");
+        append(indent() + "Default parameters:\n");
         indentLevel++;
-        for (auto &pr : node.defaultParams) {
-            // имя параметра
+        for (const auto &pr : node.defaultParams) {
+            // pr.first – имя параметра, pr.second – Expression*
             append(indent() + pr.first + " =\n");
-            // и его выражение по умолчанию — рекурсия в дерево
             indentLevel++;
             pr.second->accept(*this);
             indentLevel--;
@@ -61,18 +71,23 @@ void ASTPrinterVisitor::visit(FuncDecl &node) {
         indentLevel--;
     }
 
-    // Тело
+    // Тело функции (BlockStat)
     append(indent() + "Body:\n");
     indentLevel++;
     if (node.body) {
         node.body->accept(*this);
     }
-    indentLevel -= 2;
+    indentLevel--;
+
+    indentLevel--;
 }
 
-
+// ------------------------------------
+// visit(BlockStat):
+// Печатает вложенный блок операторов
+// ------------------------------------
 void ASTPrinterVisitor::visit(BlockStat &node) {
-    append(indent() + "BlockStat:\n");
+    append(indent() + "BlockStat (line = " + std::to_string(node.line) + "):\n");
     indentLevel++;
     for (auto &stmt : node.statements) {
         stmt->accept(*this);
@@ -80,126 +95,121 @@ void ASTPrinterVisitor::visit(BlockStat &node) {
     indentLevel--;
 }
 
-
+// ------------------------------------
+// visit(ExprStat):
+// Оператор-выражение
+// ------------------------------------
 void ASTPrinterVisitor::visit(ExprStat &node) {
-    append(indent() + "ExprStat:\n");
+    append(indent() + "ExprStat (line = " + std::to_string(node.line) + "):\n");
     indentLevel++;
-    if (node.expr)
+    if (node.expr) {
         node.expr->accept(*this);
+    }
     indentLevel--;
 }
 
-
+// ------------------------------------
+// visit(CondStat):
+// Оператор if-elif-else
+// ------------------------------------
 void ASTPrinterVisitor::visit(CondStat &node) {
-    append(indent() + "CondStat:\n");
+    append(indent() + "CondStat (line = " + std::to_string(node.line) + "):\n");
     indentLevel++;
+
+    // if-condition
     append(indent() + "If condition:\n");
     indentLevel++;
     node.condition->accept(*this);
     indentLevel--;
+
+    // if-block
     append(indent() + "If block:\n");
     indentLevel++;
     node.ifblock->accept(*this);
     indentLevel--;
-    for (auto &elifPair : node.elifblocks) {
-        append(indent() + "Elif condition:\n");
+
+    // elif-блоки
+    for (size_t i = 0; i < node.elifblocks.size(); ++i) {
+        append(indent() + "Elif #" + std::to_string(i+1) + " condition:\n");
         indentLevel++;
-        elifPair.first->accept(*this);
+        node.elifblocks[i].first->accept(*this);
         indentLevel--;
-        append(indent() + "Elif block:\n");
+
+        append(indent() + "Elif #" + std::to_string(i+1) + " block:\n");
         indentLevel++;
-        elifPair.second->accept(*this);
+        node.elifblocks[i].second->accept(*this);
         indentLevel--;
     }
+
+    // else-блок
     if (node.elseblock) {
         append(indent() + "Else block:\n");
         indentLevel++;
         node.elseblock->accept(*this);
         indentLevel--;
     }
+
     indentLevel--;
 }
 
-
+// ------------------------------------
+// visit(WhileStat):
+// Оператор while
+// ------------------------------------
 void ASTPrinterVisitor::visit(WhileStat &node) {
-    append(indent() + "WhileStat:\n");
+    append(indent() + "WhileStat (line = " + std::to_string(node.line) + "):\n");
     indentLevel++;
+
     append(indent() + "Condition:\n");
     indentLevel++;
     node.condition->accept(*this);
     indentLevel--;
+
     append(indent() + "Body:\n");
     indentLevel++;
     node.body->accept(*this);
-    indentLevel -= 2;
+    indentLevel--;
+
+    indentLevel--;
 }
 
-
-
+// ------------------------------------
+// visit(ForStat):
+// Оператор for
+// ------------------------------------
 void ASTPrinterVisitor::visit(ForStat &node) {
-    
-    std::string iters;
+    // Сначала печатаем имена итераторов
+    std::string iters = "";
     for (size_t i = 0; i < node.iterators.size(); ++i) {
         iters += node.iterators[i];
         if (i + 1 < node.iterators.size()) {
             iters += ", ";
         }
     }
-
-   
-    append(indent() + "ForStat: iterators = [" + iters + "]\n");
-
-    
+    append(indent() + "ForStat (line = " + std::to_string(node.line) + "): iterators = [" + iters + "]\n");
     indentLevel++;
+
+    // Iterable
     append(indent() + "Iterable:\n");
     indentLevel++;
     node.iterable->accept(*this);
-    indentLevel -= 1;
+    indentLevel--;
 
-    
+    // Body
     append(indent() + "Body:\n");
     indentLevel++;
     node.body->accept(*this);
-    indentLevel -= 2;
-}
+    indentLevel--;
 
-
-
-void ASTPrinterVisitor::visit(ReturnStat &node) {
-    append(indent() + "ReturnStat:\n");
-    if (node.expr) {
-        indentLevel++;
-        node.expr->accept(*this);
-        indentLevel--;
-    }
-}
-
-
-void ASTPrinterVisitor::visit(BreakStat &node) {
-    append(indent() + "BreakStat\n");
-}
-
-
-void ASTPrinterVisitor::visit(ContinueStat &node) {
-    append(indent() + "ContinueStat\n");
-}
-
-
-void ASTPrinterVisitor::visit(PassStat &node) {
-    append(indent() + "PassStat\n");
-}
-
-
-void ASTPrinterVisitor::visit(AssertStat &node) {
-    append(indent() + "AssertStat:\n");
-    indentLevel++;
-    node.condition->accept(*this);
     indentLevel--;
 }
 
-
-void ASTPrinterVisitor::visit(ExitStat &node) {
-    append(indent() + "ExitStat:\n");
+// ------------------------------------
+// visit(ReturnStat):
+// Оператор return
+// ------------------------------------
+void ASTPrinterVisitor::visit(ReturnStat &node) {
+    append(indent() + "ReturnStat (line = " + std::to_string(node.line) + ")\n");
     if (node.expr) {
         indentLevel++;
         node.expr->accept(*this);
@@ -207,340 +217,322 @@ void ASTPrinterVisitor::visit(ExitStat &node) {
     }
 }
 
-
-void ASTPrinterVisitor::visit(PrintStat &node) {
-    append(indent() + "PrintStat:\n");
-    if (node.expr) {
-        indentLevel++;
-        node.expr->accept(*this);
-        indentLevel--;
-    }
+// ------------------------------------
+// visit(BreakStat):
+// Оператор break
+// ------------------------------------
+void ASTPrinterVisitor::visit(BreakStat &node) {
+    append(indent() + "BreakStat (line = " + std::to_string(node.line) + ")\n");
 }
 
-void ASTPrinterVisitor::visit(AssignStat &node) {
-    append(indent() + "AssignStat:\n");
+// ------------------------------------
+// visit(ContinueStat):
+// Оператор continue
+// ------------------------------------
+void ASTPrinterVisitor::visit(ContinueStat &node) {
+    append(indent() + "ContinueStat (line = " + std::to_string(node.line) + ")\n");
+}
+
+// ------------------------------------
+// visit(PassStat):
+// Оператор pass
+// ------------------------------------
+void ASTPrinterVisitor::visit(PassStat &node) {
+    append(indent() + "PassStat (line = " + std::to_string(node.line) + ")\n");
+}
+
+// ------------------------------------
+// visit(AssertStat):
+// Оператор assert
+// ------------------------------------
+void ASTPrinterVisitor::visit(AssertStat &node) {
+    append(indent() + "AssertStat (line = " + std::to_string(node.line) + "):\n");
     indentLevel++;
-    
+    if (node.condition) {
+        append(indent() + "Condition:\n");
+        indentLevel++;
+        node.condition->accept(*this);
+        indentLevel--;
+    }
+    if (node.message) {
+        append(indent() + "Message:\n");
+        indentLevel++;
+        node.message->accept(*this);
+        indentLevel--;
+    }
+    indentLevel--;
+}
+
+// ------------------------------------
+// visit(ExitStat):
+// Оператор exit
+// ------------------------------------
+void ASTPrinterVisitor::visit(ExitStat &node) {
+    append(indent() + "ExitStat (line = " + std::to_string(node.line) + "):\n");
+    if (node.expr) {
+        indentLevel++;
+        node.expr->accept(*this);
+        indentLevel--;
+    }
+}
+
+// ------------------------------------
+// visit(PrintStat):
+// Оператор print
+// ------------------------------------
+void ASTPrinterVisitor::visit(PrintStat &node) {
+    append(indent() + "PrintStat (line = " + std::to_string(node.line) + "):\n");
+    if (node.expr) {
+        indentLevel++;
+        node.expr->accept(*this);
+        indentLevel--;
+    }
+}
+
+// ------------------------------------
+// visit(AssignStat):
+// Оператор присваивания
+// ------------------------------------
+void ASTPrinterVisitor::visit(AssignStat &node) {
+    append(indent() + "AssignStat (line = " + std::to_string(node.line) + "):\n");
+    indentLevel++;
+
+    // Левая часть
     append(indent() + "Left:\n");
     indentLevel++;
-    
     if (node.left) {
         node.left->accept(*this);
     }
     indentLevel--;
-    
+
+    // Правая часть
     append(indent() + "Right:\n");
     indentLevel++;
     if (node.right) {
         node.right->accept(*this);
     }
     indentLevel--;
-    
-    
+
     indentLevel--;
 }
 
-// // Visitor для OrExpr
-// void ASTPrinterVisitor::visit(OrExpr &node) {
-//     append(indent() + "OrExpr:\n");
-//     indentLevel++;
-//     append(indent() + "Left:\n");
-//     indentLevel++;
-//     node.left->accept(*this);
-//     indentLevel--;
-//     for (auto &pair : node.rights) {
-//         append(indent() + "Operator: " + pair.first + "\n");
-//         append(indent() + "Right:\n");
-//         indentLevel++;
-//         pair.second->accept(*this);
-//         indentLevel--;
-//     }
-//     indentLevel--;
-// }
-
-// // Visitor для AndExpr
-// void ASTPrinterVisitor::visit(AndExpr &node) {
-//     append(indent() + "AndExpr:\n");
-//     indentLevel++;
-//     append(indent() + "Left:\n");
-//     indentLevel++;
-//     node.left->accept(*this);
-//     indentLevel--;
-//     for (auto &pair : node.rights) {
-//         append(indent() + "Operator: " + pair.first + "\n");
-//         append(indent() + "Right:\n");
-//         indentLevel++;
-//         pair.second->accept(*this);
-//         indentLevel--;
-//     }
-//     indentLevel--;
-// }
-
-
-// void ASTPrinterVisitor::visit(NotExpr &node) {
-//     append(indent() + "NotExpr:\n");
-//     indentLevel++;
-//     node.comparison->accept(*this);
-//     indentLevel--;
-// }
-
-
-// void ASTPrinterVisitor::visit(ComparisonExpr &node) {
-//     append(indent() + "ComparisonExpr:\n");
-//     indentLevel++;
-//     append(indent() + "Left:\n");
-//     indentLevel++;
-//     node.left->accept(*this);
-//     indentLevel--;
-//     for (auto &pair : node.rights) {
-//         append(indent() + "Operator: " + pair.first + "\n");
-//         append(indent() + "Right:\n");
-//         indentLevel++;
-//         pair.second->accept(*this);
-//         indentLevel--;
-//     }
-//     indentLevel--;
-// }
-
-
-// void ASTPrinterVisitor::visit(ArithExpr &node) {
-//     append(indent() + "ArithExpr:\n");
-//     indentLevel++;
-//     append(indent() + "Left:\n");
-//     indentLevel++;
-//     node.left->accept(*this);
-//     indentLevel--;
-//     for (auto &pair : node.rights) {
-//         append(indent() + "Operator: " + pair.first + "\n");
-//         append(indent() + "Right:\n");
-//         indentLevel++;
-//         pair.second->accept(*this);
-//         indentLevel--;
-//     }
-//     indentLevel--;
-// }
-
-
-// void ASTPrinterVisitor::visit(TermExpr &node) {
-//     append(indent() + "TermExpr:\n");
-//     indentLevel++;
-//     append(indent() + "Left:\n");
-//     indentLevel++;
-//     node.left->accept(*this);
-//     indentLevel--;
-//     for (auto &pair : node.rights) {
-//         append(indent() + "Operator: " + pair.first + "\n");
-//         append(indent() + "Right:\n");
-//         indentLevel++;
-//         pair.second->accept(*this);
-//         indentLevel--;
-//     }
-//     indentLevel--;
-// }
-
-
-// void ASTPrinterVisitor::visit(FactorExpr &node) {
-//     append(indent() + "FactorExpr: " + node.unaryOp + "\n");
-//     indentLevel++;
-//     node.operand->accept(*this);
-//     indentLevel--;
-// }
-
-
-// void ASTPrinterVisitor::visit(PowerExpr &node) {
-//     append(indent() + "PowerExpr:\n");
-//     indentLevel++;
-//     append(indent() + "Base:\n");
-//     indentLevel++;
-//     node.base->accept(*this);
-//     indentLevel--;
-//     if (node.exponent) {
-//         append(indent() + "Exponent:\n");
-//         indentLevel++;
-//         node.exponent->accept(*this);
-//         indentLevel--;
-//     }
-//     indentLevel--;
-// }
-
+// ------------------------------------
+// visit(UnaryExpr):
+// Унарное выражение
+// ------------------------------------
 void ASTPrinterVisitor::visit(UnaryExpr &node) {
-    // Например, for "not x" или "-a"
-    append(indent() + "UnaryExpr: op = '" + node.op + "'\n");
+    append(indent() + "UnaryExpr (op = '" + node.op + "', line = " + std::to_string(node.line) + ")\n");
     indentLevel++;
     node.operand->accept(*this);
     indentLevel--;
 }
 
+// ------------------------------------
+// visit(BinaryExpr):
+// Бинарное выражение
+// ------------------------------------
 void ASTPrinterVisitor::visit(BinaryExpr &node) {
-    // Например, for "a + b", "x and y", "p == q"
-    append(indent() + "BinaryExpr: op = '" + node.op + "'\n");
+    append(indent() + "BinaryExpr (op = '" + node.op + "', line = " + std::to_string(node.line) + ")\n");
     indentLevel++;
+
     append(indent() + "Left:\n");
     indentLevel++;
     node.left->accept(*this);
     indentLevel--;
+
     append(indent() + "Right:\n");
     indentLevel++;
     node.right->accept(*this);
-    indentLevel -= 2;
+    indentLevel--;
+
+    indentLevel--;
 }
 
+// ------------------------------------
+// visit(PrimaryExpr):
+// Самая «первичная» форма: литерал, идентификатор, вызов, индекс, скобки, тернар
+// ------------------------------------
 void ASTPrinterVisitor::visit(PrimaryExpr &node) {
-    append(indent() + "PrimaryExpr: ");
+    // Сначала скажем, какой именно вариант PrimaryType
+    append(indent() + "PrimaryExpr (");
     switch (node.type) {
         case PrimaryExpr::PrimaryType::LITERAL:
-            append("Literal\n");
-            if (node.literalExpr) {
-                indentLevel++;
-                node.literalExpr->accept(*this);
-                indentLevel--;
-            }
+            append("LITERAL, line = " + std::to_string(node.line) + ")\n");
+            indentLevel++;
+            if (node.literalExpr) node.literalExpr->accept(*this);
+            indentLevel--;
             break;
         case PrimaryExpr::PrimaryType::ID:
-            append("Identifier\n");
-            if (node.idExpr) {
-                indentLevel++;
-                node.idExpr->accept(*this);
-                indentLevel--;
-            }
+            append("ID, line = " + std::to_string(node.line) + ")\n");
+            indentLevel++;
+            if (node.idExpr) node.idExpr->accept(*this);
+            indentLevel--;
             break;
         case PrimaryExpr::PrimaryType::CALL:
-            append("Call\n");
-            if (node.callExpr) {
-                indentLevel++;
-                node.callExpr->accept(*this);
-                indentLevel--;
-            }
+            append("CALL, line = " + std::to_string(node.line) + ")\n");
+            indentLevel++;
+            if (node.callExpr) node.callExpr->accept(*this);
+            indentLevel--;
             break;
         case PrimaryExpr::PrimaryType::INDEX:
-            append("Index\n");
-            if (node.indexExpr) {
-                indentLevel++;
-                node.indexExpr->accept(*this);
-                indentLevel--;
-            }
+            append("INDEX, line = " + std::to_string(node.line) + ")\n");
+            indentLevel++;
+            if (node.indexExpr) node.indexExpr->accept(*this);
+            indentLevel--;
             break;
         case PrimaryExpr::PrimaryType::PAREN:
-            append("Parenthesized Expression\n");
-            if (node.parenExpr) {
-                indentLevel++;
-                node.parenExpr->accept(*this);
-                indentLevel--;
-            }
+            append("PAREN, line = " + std::to_string(node.line) + ")\n");
+            indentLevel++;
+            if (node.parenExpr) node.parenExpr->accept(*this);
+            indentLevel--;
             break;
         case PrimaryExpr::PrimaryType::TERNARY:
-            append("Ternary Expression\n");
-            if (node.ternaryExpr) {
-                indentLevel++;
-                node.ternaryExpr->accept(*this);
-                indentLevel--;
-            }
+            append("TERNARY, line = " + std::to_string(node.line) + ")\n");
+            indentLevel++;
+            if (node.ternaryExpr) node.ternaryExpr->accept(*this);
+            indentLevel--;
             break;
         default:
-            append("Unknown PrimaryExpr Type\n");
+            append("UNKNOWN, line = " + std::to_string(node.line) + ")\n");
+            break;
     }
 }
 
-
+// ------------------------------------
+// visit(TernaryExpr):
+// Тернарный оператор
+// ------------------------------------
 void ASTPrinterVisitor::visit(TernaryExpr &node) {
-    append(indent() + "TernaryExpr:\n");
+    append(indent() + "TernaryExpr (line = " + std::to_string(node.line) + "):\n");
     indentLevel++;
-    append(indent() + "TrueExpr:\n");
+
+    append(indent() + "True expression:\n");
     indentLevel++;
     node.trueExpr->accept(*this);
     indentLevel--;
+
     append(indent() + "Condition:\n");
     indentLevel++;
     node.condition->accept(*this);
     indentLevel--;
-    append(indent() + "FalseExpr:\n");
+
+    append(indent() + "False expression:\n");
     indentLevel++;
     node.falseExpr->accept(*this);
     indentLevel--;
+
     indentLevel--;
 }
 
-
+// ------------------------------------
+// visit(IdExpr):
+// Идентификатор
+// ------------------------------------
 void ASTPrinterVisitor::visit(IdExpr &node) {
-    append(indent() + "IdExpr: " + node.name + "\n");
+    append(indent() + "IdExpr (line = " + std::to_string(node.line) + "): " + node.name + "\n");
 }
 
-
+// ------------------------------------
+// visit(LiteralExpr):
+// Литерал: int, float, string, bool, None
+// ------------------------------------
 void ASTPrinterVisitor::visit(LiteralExpr &node) {
     std::string typeStr;
     std::string valStr;
 
-    // switch(node.literalType) {
-    //     case LiteralExpr::LiteralType::INT: typeStr = "INT"; break;
-    //     case LiteralExpr::LiteralType::FLOAT: typeStr = "FLOAT"; break;
-    //     case LiteralExpr::LiteralType::STRING: typeStr = "STRING"; break;
-    //     case LiteralExpr::LiteralType::BOOL: typeStr = "BOOL"; break;
-    //     case LiteralExpr::LiteralType::NONE: typeStr = "NONE"; break;
-    // }
-
+    // Определяем, какой тип лежит в variant
     if (std::holds_alternative<int>(node.value)) {
         typeStr = "INT";
         valStr = std::to_string(std::get<int>(node.value));
-    } else if (std::holds_alternative<double>(node.value)) {
+    }
+    else if (std::holds_alternative<double>(node.value)) {
         typeStr = "FLOAT";
         valStr = std::to_string(std::get<double>(node.value));
-    } else if (std::holds_alternative<std::string>(node.value)) {
+    }
+    else if (std::holds_alternative<std::string>(node.value)) {
         typeStr = "STRING";
         valStr = std::get<std::string>(node.value);
-    } else if (std::holds_alternative<bool>(node.value)) {
+    }
+    else if (std::holds_alternative<bool>(node.value)) {
         typeStr = "BOOL";
         valStr = (std::get<bool>(node.value) ? "True" : "False");
-    } else if (std::holds_alternative<std::monostate>(node.value)) {
+    }
+    else if (std::holds_alternative<std::monostate>(node.value)) {
         typeStr = "NONE";
         valStr = "None";
     }
 
-    append(indent() + "LiteralExpr: [" + typeStr + "] " + valStr + "\n");
+    append(indent() + "LiteralExpr (type = " + typeStr + ", line = " + std::to_string(node.line) + "): " + valStr + "\n");
 }
 
-
+// ------------------------------------
+// visit(CallExpr):
+// Вызов функции
+// ------------------------------------
 void ASTPrinterVisitor::visit(CallExpr &node) {
-    append(indent() + "CallExpr:\n");
+    append(indent() + "CallExpr (line = " + std::to_string(node.line) + "):\n");
     indentLevel++;
+
+    // Печатаем, что внутри – вызывающий объект
     append(indent() + "Caller:\n");
     indentLevel++;
     node.caller->accept(*this);
     indentLevel--;
+
+    // А здесь – аргументы
     append(indent() + "Arguments:\n");
     indentLevel++;
     for (auto &arg : node.arguments) {
         arg->accept(*this);
     }
     indentLevel--;
+
     indentLevel--;
 }
 
-
+// ------------------------------------
+// visit(IndexExpr):
+// Операция индексирования: base[index]
+// ------------------------------------
 void ASTPrinterVisitor::visit(IndexExpr &node) {
-    append(indent() + "IndexExpr:\n");
+    append(indent() + "IndexExpr (line = " + std::to_string(node.line) + "):\n");
     indentLevel++;
+
     append(indent() + "Base:\n");
     indentLevel++;
     node.base->accept(*this);
     indentLevel--;
+
     append(indent() + "Index:\n");
     indentLevel++;
     node.index->accept(*this);
-    indentLevel -= 2;
+    indentLevel--;
+
+    indentLevel--;
 }
 
+// ------------------------------------
+// visit(AttributeExpr):
+// Доступ к атрибуту: obj.name
+// ------------------------------------
 void ASTPrinterVisitor::visit(AttributeExpr &node) {
-    append(indent() + "AttributeExpr: " + node.name + "\n");
-
+    append(indent() + "AttributeExpr (line = " + std::to_string(node.line) + "): ." + node.name + "\n");
     indentLevel++;
+
     append(indent() + "Object:\n");
     indentLevel++;
     node.obj->accept(*this);
-    indentLevel -= 2;
+    indentLevel--;
+
+    indentLevel--;
 }
 
+// ------------------------------------
+// visit(ListExpr):
+// Литерал списка: [e1, e2, ...]
+// ------------------------------------
 void ASTPrinterVisitor::visit(ListExpr &node) {
-    append(indent() + "ListExpr:\n");
+    append(indent() + "ListExpr (line = " + std::to_string(node.line) + "):\n");
     indentLevel++;
     for (auto &el : node.elems) {
         el->accept(*this);
@@ -548,8 +540,12 @@ void ASTPrinterVisitor::visit(ListExpr &node) {
     indentLevel--;
 }
 
+// ------------------------------------
+// visit(SetExpr):
+// Литерал множества: {e1, e2, ...}
+// ------------------------------------
 void ASTPrinterVisitor::visit(SetExpr &node) {
-    append(indent() + "SetExpr:\n");
+    append(indent() + "SetExpr (line = " + std::to_string(node.line) + "):\n");
     indentLevel++;
     for (auto &el : node.elems) {
         el->accept(*this);
@@ -557,18 +553,76 @@ void ASTPrinterVisitor::visit(SetExpr &node) {
     indentLevel--;
 }
 
+// ------------------------------------
+// visit(DictExpr):
+// Литерал словаря: {k1: v1, k2: v2, ...}
+// ------------------------------------
 void ASTPrinterVisitor::visit(DictExpr &node) {
-    append(indent() + "DictExpr:\n");
+    append(indent() + "DictExpr (line = " + std::to_string(node.line) + "):\n");
     indentLevel++;
     for (auto &kv : node.items) {
         append(indent() + "Key:\n");
         indentLevel++;
         kv.first->accept(*this);
         indentLevel--;
+
         append(indent() + "Value:\n");
         indentLevel++;
         kv.second->accept(*this);
         indentLevel--;
     }
+    indentLevel--;
+}
+
+// ------------------------------------
+// *** НОВЫЙ МЕТОД ***
+// visit(ClassDecl):
+// Объявление класса: имя, базовые классы, поля и методы
+// ------------------------------------
+void ASTPrinterVisitor::visit(ClassDecl &node) {
+    // Печатаем саму сигнатуру class: имя, базовые (если есть), строка объявления
+    std::string basesList;
+    if (!node.baseClasses.empty()) {
+        basesList = "(";
+        for (size_t i = 0; i < node.baseClasses.size(); ++i) {
+            basesList += node.baseClasses[i];
+            if (i + 1 < node.baseClasses.size()) {
+                basesList += ", ";
+            }
+        }
+        basesList += ")";
+    }
+
+    append(indent() + "ClassDecl (line = " + std::to_string(node.line) + "): " + node.name + basesList + "\n");
+    indentLevel++;
+
+    // Печатаем поля (FieldDecl)
+    if (!node.fields.empty()) {
+        append(indent() + "Fields:\n");
+        indentLevel++;
+        for (auto &fld : node.fields) {
+            // У FieldDecl нет собственного visit, поэтому печатаем вручную
+            append(indent() + "FieldDecl (line = " + std::to_string(fld->line) + "): " + fld->name + "\n");
+            if (fld->initExpr) {
+                indentLevel++;
+                append(indent() + "Initializer:\n");
+                indentLevel++;
+                fld->initExpr->accept(*this);
+                indentLevel -= 2;
+            }
+        }
+        indentLevel--;
+    }
+
+    // Печатаем методы
+    if (!node.methods.empty()) {
+        append(indent() + "Methods:\n");
+        indentLevel++;
+        for (auto &mth : node.methods) {
+            mth->accept(*this); // это уже FuncDecl::visit
+        }
+        indentLevel--;
+    }
+
     indentLevel--;
 }

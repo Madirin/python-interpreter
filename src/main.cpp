@@ -5,7 +5,7 @@
 #include "printer.hpp"
 #include <cstdio>
 #include "parser.hpp"
-#include "analyzer.hpp"
+#include "executer.hpp"
 
 int main() {
     
@@ -55,9 +55,9 @@ int main() {
     
     std::cout << "AST successfully generated.\n" << std::endl;
 
-    std::cout << "=== Semantic Analysis ===\n";
-    SemanticAnalyzer semantic;
-    semantic.analyze(*ast);
+    std::cout << "=== Execution ===\n";
+    Executor exec;
+    exec.execute(*ast);
     
     return 0;
 }

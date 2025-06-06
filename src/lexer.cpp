@@ -96,248 +96,290 @@ bool Lexer::match(bool eof, std::size_t size = 0) {
 }
 
 Token Lexer::extract() {
-    while (index < input.size()) {
+    // Если у нас после каждого LINE_START есть незакрытые DEDENT, выпустили бы их раньше
+    // Поэтому, до любого реального разбора, очередь на сброс отступов уже пуста.
 
-        // def hello():
-        //    x = 10
-        // exit()
-        
-        if (input[index] == '\t' || at_line_start) {
-            
-            at_line_start = false;
+    while (index < input.size()) {
+        // Во-первых, если мы в самом начале строки или встретили табуляцию,
+        // нужно проверить, не появилась ли строка с изменённым отступом
+        if (at_line_start || input[index] == '\t') {
+            at_line_start = false; // сбросим флаг, дальше – не начало строки
+            // Извлекаем токен, связанный с отступами (INDENT/DEDENT/NOCHANGE)
             Token indentTok = extract_indentation();
-            
-            if (indentTok.type != TokenType::NEWLINE) {
+            // Если это действительно изменение уровня (INDENT или DEDENT), возвращаем сразу
+            if (indentTok.type == TokenType::INDENT || indentTok.type == TokenType::DEDENT) {
                 return indentTok;
             }
-           
+            // Если вернули NOCHANGE (помечено как NEWLINE), значит отступ остался прежним,
+            // но мы специально не возвратили токен, чтобы перейти к обычному анализу
         }
 
-
-        // Сначала обрабатываем перевод строки
-        if (input[index] == '\n') {
-             // newline?, 
-             return extract_newline();
+        // После того, как проверили отступ, сразу проверяем, не кончилась ли очередь DEDENT
+        if (!pending_indent_tokens.empty()) {
+            Token ded = pending_indent_tokens.front();
+            pending_indent_tokens.erase(pending_indent_tokens.begin());
+            return ded;
         }
-          
-        // while (input[index] == ' ')
-        if (input[index] == ' ') {
+
+        char c = input[index];
+
+        // 1) Разбор «новой строки» '\n'
+        if (c == '\n') {
+            return extract_newline();
+        }
+
+        // 2) Пропускаем пробелы (но не в начале строки: там пробелы были учтены в extract_indentation)
+        if (c == ' ') {
             ++index;
             ++column;
+            continue; // продолжаем цикл, возможно, снова призыв extract_indentation
         }
-        
-        
-        if (std::isalpha(input[index]) || input[index] == '_') {
+
+        // 3) Буква или '_' → идентификатор (или ключевое слово)
+        if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
             return extract_identifier();
         }
 
-        if (std::isdigit(input[index])) {
+        // 4) Цифра → число
+        if (std::isdigit(static_cast<unsigned char>(c))) {
             return extract_number();
         }
 
-        if (input[index] == '"') {
+        // 5) Кавычка '"' → строковый литерал
+        if (c == '"') {
             return extract_string();
         }
 
-        if (std::ispunct(input[index])) {
+        // 6) Любой пунктуационный символ → оператор/разделитель
+        if (std::ispunct(static_cast<unsigned char>(c))) {
             return extract_operator();
         }
 
-        throw std::runtime_error(std::string("Unexpected symbol ") + input[index]);
+        // Если ни одно правило не подошло — ошибка
+        throw std::runtime_error(std::string("Unexpected symbol '") + c + "' at line " +
+                                 std::to_string(line) + ", column " + std::to_string(column));
     }
-    
-    return {TokenType::END, ""};
+
+    // Мы вышли из while, значит index >= input.size()
+    // Если очередь DEDENT пустая, возвращаем END (конец входа)
+    return {TokenType::END, "", line, column};
 }
 
-
+// -----------------------------------------------------------------------------
+// Обработка «новой строки»
+// -----------------------------------------------------------------------------
 Token Lexer::extract_newline() {
+    // Съедаём '\n', обновляем координаты
     ++index;
-    column = 1;
     ++line;
+    column = 1;
+    // Помечаем, что следующий символ — начало новой строки
     at_line_start = true;
 
     return {TokenType::NEWLINE, "\\n", line - 1, column};
 }
 
+// -----------------------------------------------------------------------------
+// Обработка отступов в начале строки:
+//   - Считаем, сколько пробелов/табов до первого «непробельного» символа.
+//   - Сравниваем с текущим верхом indent_stack.
+//     * Если больше — выпускаем INDENT и пушим новый уровень в стэк.
+//     * Если меньше — пока уровни в стэке больше текущих, вытаскиваем их и
+//       накапливаем DEDENT в очередь.
+//     * Если равно — возвращаем специальный токен NOCHANGE (в нашем случае мы
+//       представляем его как NEWLINE, но в extract() мы его отбрасываем).
+// -----------------------------------------------------------------------------
 Token Lexer::extract_indentation() {
-    
-
+    // Считаем текущий уровень «пробельных» символов, переводя '\t' в 4 пробела
     int current_spaces = 0;
-    while (match(false) && (input[index] == ' ' || input[index] == '\t')) {
+    int orig_index = index;
+    int orig_column = column;
 
-        if (input[index] == '\t')
+    while (match(false) && (input[index] == ' ' || input[index] == '\t')) {
+        if (input[index] == '\t') {
             current_spaces += 4;
-        else
+        } else {
             current_spaces += 1;
+        }
         ++index;
         ++column;
     }
 
-    if (current_spaces % 4 == 0) {
-        if (current_spaces > indent_stack.back()) {
-            indent_stack.push_back(current_spaces);
-            return Token{TokenType::INDENT, "", line, column};
-        }
-        
-        else if (current_spaces < indent_stack.back()) {
-            while (!indent_stack.empty() && indent_stack.back() > current_spaces) {
-                indent_stack.pop_back();
-                pending_indent_tokens.push_back(Token{TokenType::DEDENT, "", line, column});
-            }
-            
-            
-            Token tok = pending_indent_tokens.front();
-            pending_indent_tokens.erase(pending_indent_tokens.begin());
-            return tok;
-        }   
-        return Token{TokenType::NEWLINE, "\\n", line, column};
+    // Если нашли не-пробельный символ или дошли до конца строки/файла:
+    // current_spaces — наш реальный уровень отступа
+    int previous_indent = indent_stack.back();
+
+    if (current_spaces > previous_indent) {
+        // Новый уровень – пушим в стек и выдаём INDENT
+        indent_stack.push_back(current_spaces);
+        return Token{TokenType::INDENT, "", line, orig_column};
     }
-    throw std::runtime_error("Indentation error at line " + std::to_string(line));
+
+    if (current_spaces < previous_indent) {
+        // Уровень уменьшился – нужно несколько DEDENT подряд, пока не совпадёт
+        while (!indent_stack.empty() && indent_stack.back() > current_spaces) {
+            indent_stack.pop_back();
+            // Вместо немедленного возврата, мы накапливаем в очередь:
+            pending_indent_tokens.push_back(
+                Token{TokenType::DEDENT, "", line, orig_column}
+            );
+        }
+        // После этого в extract() мы сразу вернём первый DEDENT из очереди
+        return Token{TokenType::NEWLINE, "\\n", line, orig_column}; 
+        // специальный маркер «отступы изменились, но токен не готов, разводим очередь»
+    }
+
+    // Если current_spaces == previous_indent, никаких новых отступов нет
+    // Возвращаем «заглушку» NEWLINE, которую extract() просто отбрасывает и идёт дальше
+    return Token{TokenType::NEWLINE, "\\n", line, orig_column};
 }
 
+// -----------------------------------------------------------------------------
+// Извлечение идентификатора (ID или ключевое слово)
+// -----------------------------------------------------------------------------
 Token Lexer::extract_identifier() {
     std::size_t size = 0;
     int start_col = column;
-    
-    while (match(false, size) && (std::isalnum(input[index + size]) || input[index + size] == '_')) {
-        size++;
-        column++;
+
+    // Собираем все символы [A-Za-z0-9_]
+    while (match(false, size) &&
+           (std::isalnum(static_cast<unsigned char>(input[index + size])) || input[index + size] == '_')) {
+        ++size;
+        ++column;
     }
-    
+
     std::string name(input, index, size);
     index += size;
-    
-    // if keyword -> tokentype
-    auto it = triggers.find(name);
 
+    // Смотрим, не в таблице ли это ключевое слово
+    auto it = triggers.find(name);
     if (it != triggers.end()) {
         return {it->second, name, line, start_col};
     }
 
+    // Иначе это просто идентификатор
     return {TokenType::ID, name, line, start_col};
 }
 
-
+// -----------------------------------------------------------------------------
+// Извлечение числа (целое или вещественное). Очень прямолинейно:
+//   1) Собираем целую часть.
+//   2) Если следующий символ – точка, собираем дробные.
+//   3) Если следующий после дробных – e/E, собираем экспоненту.
+//   4) Возвращаем INTNUM или FLOATNUM в зависимости от наличия точки/экспоненты.
+// -----------------------------------------------------------------------------
 Token Lexer::extract_number() {
     std::size_t size = 0;
     int start_col = column;
 
-    while (match(false, size) && std::isdigit(input[index + size])) {
+    // Читаем целую часть
+    while (match(false, size) && std::isdigit(static_cast<unsigned char>(input[index + size]))) {
         ++size;
         ++column;
     }
 
     bool is_float = false;
 
-    // dot float 4.3231
+    // Смотрим, есть ли точка
     if (match(false, size) && input[index + size] == '.') {
         is_float = true;
         ++size;
-        ++column;   
-
-        if (match(false, size) && std::isdigit(input[index + size])) {
-            while (std::isdigit(input[index + size])) {
+        ++column;
+        // Собираем дробную часть
+        if (match(false, size) && std::isdigit(static_cast<unsigned char>(input[index + size]))) {
+            while (match(false, size) && std::isdigit(static_cast<unsigned char>(input[index + size]))) {
                 ++size;
                 ++column;
             }
         } else {
-            // 123. -> 123.0
-
-            std::string value(input, index, size);
+            // Было что-то вроде "123." — допишем "0"
+            std::string val(input, index, size);
             index += size;
-
-            return {TokenType::FLOATNUM, value + "0", line, column};
+            return {TokenType::FLOATNUM, val + "0", line, start_col};
         }
-
-        std::string value(input, index, size);
-        index += size;
-        return {TokenType::FLOATNUM, value, line, column};
     }
 
-    // exp / 4e-3 / tokentype:float
-    
-    if (match(false, size) && (input[index+size] == 'e' || input[index + size] == 'E')) {
+    // Смотрим на экспоненту
+    if (match(false, size) && (input[index + size] == 'e' || input[index + size] == 'E')) {
         is_float = true;
         ++size;
         ++column;
-
+        // Может быть + или -
         if (match(false, size) && (input[index + size] == '+' || input[index + size] == '-')) {
             ++size;
             ++column;
         }
-
-        if (match(false, size) && std::isdigit(input[index + size])) {
-            while (match(false, size) && std::isdigit(input[index + size])) {
+        // Цифры за экспонентой
+        if (match(false, size) && std::isdigit(static_cast<unsigned char>(input[index + size]))) {
+            while (match(false, size) && std::isdigit(static_cast<unsigned char>(input[index + size]))) {
                 ++size;
                 ++column;
             }
         } else {
-            throw std::runtime_error("Invalid at line " + std::to_string(line));
+            throw std::runtime_error("Invalid float literal at line " + std::to_string(line));
         }
-
-        std::string value(input, index, size);
-        index += size;
-        return {TokenType::FLOATNUM, value, line, column};
-    } 
-    
+    }
 
     std::string value(input, index, size);
     index += size;
-
-    return {TokenType::INTNUM, value, line, start_col};
+    if (is_float) {
+        return {TokenType::FLOATNUM, value, line, start_col};
+    } else {
+        return {TokenType::INTNUM, value, line, start_col};
+    }
 }
 
-
+// -----------------------------------------------------------------------------
+// Извлечение строкового литерала в двойных кавычках, поддерживается экранирование.
+// -----------------------------------------------------------------------------
 Token Lexer::extract_string() {
-    char quota = input[index];
-    bool is_triple = false;
-    std::size_t size = 1;
+    char quote = input[index]; // наверняка '"'
     int start_col = column;
+    bool is_triple = false;
 
-    if (match(false, 2) && input[index + 1] == quota && input[index + 2] == quota) {
+    // Проверяем, не тройные ли кавычки
+    if (match(false, 2) && input[index + 1] == quote && input[index + 2] == quote) {
         is_triple = true;
-        size += 2;
-        index = index + 3;
+        index += 3;
+        column += 3;
     } else {
+        // Обычная одиночная
         ++index;
+        ++column;
     }
-
-    
-    ++column;
 
     std::string value;
     bool escape = false;
 
-    while (match(false)) {
-        char c = input[index];
-
-        if (match(true)) {
-            throw std::runtime_error("Unterminated string at line " + std::to_string(line));
+    while (true) {
+        if (index >= input.size()) {
+            throw std::runtime_error("Unterminated string literal at line " + std::to_string(line));
         }
-        
-        if (!escape && c == quota) {
-            if (is_triple) {
+        char c = input[index];
+        if (!escape && c == quote) {
+            // Если тройные, ожидаем три кавычки
+            if (is_triple && match(false, 2) && input[index + 1] == quote && input[index + 2] == quote) {
                 index += 3;
                 column += 3;
                 break;
-            } else {
+            }
+            if (!is_triple) {
                 ++index;
                 ++column;
                 break;
             }
-        } 
-
+        }
         if (escape) {
             switch (c) {
-                case 'n': value += '\n'; break;
-                case 't': value += '\t'; break;
-                case 'r': value += '\r'; break;
-                case '"': value += '"'; break;
+                case 'n':  value += '\n'; break;
+                case 't':  value += '\t'; break;
+                case 'r':  value += '\r'; break;
+                case '"':  value += '"';  break;
                 case '\'': value += '\''; break;
                 case '\\': value += '\\'; break;
-                case 'b': value += '\b'; break;
-                case 'f': value += '\f'; break;
-                default: value += '\\' + c; break;
+                case 'b':  value += '\b'; break;
+                case 'f':  value += '\f'; break;
+                default:   value += c;    break;
             }
             escape = false;
         } else if (c == '\\') {
@@ -345,54 +387,51 @@ Token Lexer::extract_string() {
         } else {
             value += c;
         }
-        
         ++index;
         ++column;
-
         if (c == '\n') {
             ++line;
             column = 1;
         }
     }
-    
-    
+
     return {TokenType::STRING, value, line, start_col};
 }
 
+// -----------------------------------------------------------------------------
+// Извлечение «оператора» или разделителя (включая двух- и трёхсимвольные комбинации).
+// -----------------------------------------------------------------------------
 Token Lexer::extract_operator() {
     int start_col = column;
-    std::size_t size = 1;
     std::string op;
-
     op += input[index];
 
-    if (match(false, 1)) {
-        std::string op_two = op + input[index + 1];
+    std::size_t size = 1;
 
-        // if (op_two.contains(two_ops))
-        if (two_ops.find(op_two) != two_ops.end()) {
-            op = op_two;
+    // Проверяем «два символа»
+    if (match(false, 1)) {
+        std::string two = op + input[index + 1];
+        if (two_ops.find(two) != two_ops.end()) {
+            op = two;
             size = 2;
         }
     }
 
-    if (match(false, 2)) {
-        std::string op_three = op + input[index + 2];
-
-        if (three_ops.find(op_three) != three_ops.end()) {
-            op = op_three;
+    // Проверяем «три символа»
+    if (match(false, size + 1)) {
+        std::string three = op + input[index + size];
+        if (three_ops.find(three) != three_ops.end()) {
+            op = three;
             size = 3;
         }
     }
 
     index += size;
-    column += size;
+    column += static_cast<int>(size);
 
     auto it = operator_map.find(op);
     if (it != operator_map.end()) {
-        return Token{it->second, op, line, start_col};
-
+        return {it->second, op, line, start_col};
     }
-
-    throw std::runtime_error("Unknown operator: " + op + " at line " + std::to_string(line));
+    throw std::runtime_error("Unknown operator \"" + op + "\" at line " + std::to_string(line));
 }
