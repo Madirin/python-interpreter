@@ -79,6 +79,16 @@ public:
     void visit(ExitStat    &node) override;
     void visit(PrintStat   &node) override;
 
+    void visit(ListComp &node) override;
+    void visit(DictComp &node) override;
+    void visit(TupleComp &node) override;
+
+    void visit(LambdaExpr &node) override;
+
+    void visit(class LenStat &node) override;
+    void visit(class DirStat &node) override;
+    void visit(class EnumerateStat &node) override;
+
 private:
     
     ErrorReporter reporter;        // для накопления и печати ошибок

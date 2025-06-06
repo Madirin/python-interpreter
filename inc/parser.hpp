@@ -26,6 +26,10 @@ public:
     using expression = std::unique_ptr<Expression>;
     using idExpr = std::unique_ptr<IdExpr>;
 
+    using lenStat = std::unique_ptr<LenStat>;
+    using dirStat = std::unique_ptr<DirStat>;
+    using enumerateStat = std::unique_ptr<EnumerateStat>;
+
     std::unique_ptr<TransUnit> parse();
     Parser(const std::vector<Token>& tokens);
 private:
@@ -86,5 +90,9 @@ private:
     expression parse_call(expression caller);
 
     std::unique_ptr<ClassDecl> parse_class_decl();
+
+    lenStat parse_len_stat();
+    dirStat parse_dir_stat();
+    enumerateStat parse_enumerate_stat();
 
 };

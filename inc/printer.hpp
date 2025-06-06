@@ -43,10 +43,20 @@ public:
     virtual void visit(SetExpr &node) override;
     virtual void visit(DictExpr &node) override;
 
+    void visit(ListComp &node) override;
+    void visit(DictComp &node) override;
+    void visit(TupleComp &node) override;
+
+    void visit(LambdaExpr &node) override;
+
     // *** НОВЫЕ МЕТОДЫ ***
 
     // Печать объявления класса
     virtual void visit(ClassDecl &node) override;
+
+    virtual void visit(class LenStat &node) override;
+    virtual void visit(class DirStat &node) override;
+    virtual void visit(class EnumerateStat &node) override;
 
 private:
     // Накопленная строка с текстом «раскрашенного» AST

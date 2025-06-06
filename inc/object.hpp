@@ -204,6 +204,8 @@ public:
 
     std::type_index type() const override;
     std::string repr() const override;
+
+    const std::vector<std::pair<ObjectPtr,ObjectPtr>>& getItems() const;
 };
 
 // -----------------------------------------------------------------------------
@@ -219,6 +221,8 @@ public:
 
     std::type_index type() const override;
     std::string repr() const override;
+
+    const std::vector<ObjectPtr>& getElements() const;
 };
 
 // -----------------------------------------------------------------------------
@@ -797,6 +801,10 @@ inline std::string PyDict::repr() const {
     return s + "}";
 }
 
+inline const std::vector<std::pair<ObjectPtr,ObjectPtr>>& PyDict::getItems() const {
+    return items;
+}
+
 // -------------------- PySet --------------------
 inline PySet::PySet() = default;
 
@@ -845,6 +853,10 @@ inline std::string PySet::repr() const {
         first = false;
     }
     return s + "}";
+}
+
+inline const std::vector<ObjectPtr>& PySet::getElements() const {
+    return elems;
 }
 
 // -------------------- PyBuiltinFunction --------------------

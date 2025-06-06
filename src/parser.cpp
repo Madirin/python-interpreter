@@ -404,6 +404,7 @@ statement Parser::parse_stat() {
     }
 
     // --- остальные варианты: IF, WHILE, FOR, RETURN, BREAK, CONTINUE, PASS, ASSERT, EXIT, PRINT  ---
+    
     if (curTok.type == TokenType::IF) {
         return parse_cond();
     }
@@ -433,6 +434,15 @@ statement Parser::parse_stat() {
     }
     else if (curTok.type == TokenType::PRINT) {
         return parse_print();
+    }
+    else if (curTok.type == TokenType::LEN) {
+        return parse_len_stat();
+    }
+    else if (curTok.type == TokenType::DIR) {
+        return parse_dir_stat();
+    }
+    else if (curTok.type == TokenType::ENUMERATE) {
+        return parse_enumerate_stat();
     }
     else {
         return parse_expr_stat();
@@ -888,6 +898,36 @@ expression Parser::parse_power() {
 expression Parser::parse_primary() {
     Token token = peek();
 
+    if (token.type == TokenType::LAMBDA) {
+        // «Съедаем» ключевое слово 'lambda'
+        advance();
+        int lambda_line = token.line;
+
+        // 1) Парсим ноль или больше имён параметров, разделённых запятыми,
+        //    до тех пор, пока не встретим ':'
+        std::vector<std::string> params;
+        if (peek().type != TokenType::COLON) {
+            // Пока не двоеточие, ожидаем идентификатор (имя параметра)
+            do {
+                Token idtok = extract(TokenType::ID);
+                params.push_back(idtok.value);
+            } while (match(TokenType::COMMA));  // пока есть запятая — читаем ещё ID
+        }
+
+        // 2) Теперь должен стоять двоеточие
+        extract(TokenType::COLON);
+
+        // 3) После ':' парсим ровно одно выражение (например, x + y)
+        auto bodyExpr = parse_expression();
+
+        // 4) Собираем узел LambdaExpr
+        return std::make_unique<LambdaExpr>(
+            std::move(params),
+            std::move(bodyExpr),
+            lambda_line
+        );
+    }
+    
     // Целое число
     if (token.type == TokenType::INTNUM) {
         advance();
@@ -925,72 +965,146 @@ expression Parser::parse_primary() {
     // Скобочка '(', значит либо (...), либо тернар
     else if (token.type == TokenType::LPAREN) {
         advance(); // съели '('
-        expression inside = parse_expression();
+        int lineNum = token.line;
+        
+        // По умолчанию парсим общее выражение:
+        auto inside = parse_expression();
+        // Если за этим выражением сразу идёт ключевое слово FOR — это TupleComp
+        if (!is_end() && peek().type == TokenType::FOR) {
+            advance(); // 'for'
+            Token varTok = extract(TokenType::ID);
+            std::string iterVar = varTok.value;
+            extract(TokenType::IN);
+            auto iterable = parse_expression();
+            extract(TokenType::RPAREN);
+            return std::make_unique<TupleComp>(
+                std::move(inside),
+                iterVar,
+                std::move(iterable),
+                lineNum
+            );
+        }
+
         extract(TokenType::RPAREN);
-        int paren_line = token.line;
         return std::make_unique<PrimaryExpr>(
             std::move(inside),
             ParenTag{},
-            paren_line
+            lineNum
         );
     }
     // Список [...]
     else if (token.type == TokenType::LBRACKET) {
         Token leftBracket = advance();
         int list_line = leftBracket.line;
-        std::vector<std::unique_ptr<Expression>> elems;
-        if (peek().type != TokenType::RBRACKET) {
-            do {
-                elems.push_back(parse_expression());
-            } while (match(TokenType::COMMA));
+        
+        // 1) Если сразу ']' — значит пустой список
+        if (peek().type == TokenType::RBRACKET) {
+            advance(); // съели ']'
+            return std::make_unique<ListExpr>(
+                std::vector<std::unique_ptr<Expression>>{},
+                list_line
+            );
         }
+
+        auto firstExpr = parse_expression();
+
+        if (!is_end() && peek().type == TokenType::FOR) {
+            // съедаем 'for'
+            advance();
+            // следующий токен должен быть ID (имя переменной)
+            Token varTok = extract(TokenType::ID);
+            std::string iterVar = varTok.value;
+
+            // за ним — 'in'
+            extract(TokenType::IN);
+
+            // за 'in' — выражение iterable
+            auto iterable = parse_expression();
+
+            // за iterable ожидаем ']'
+            extract(TokenType::RBRACKET);
+
+            return std::make_unique<ListComp>(
+                std::move(firstExpr),
+                iterVar,
+                std::move(iterable),
+                list_line
+            );
+        }
+
+        // 4) Иначе — это _не_ comprehension, а просто обычный литерал списка.
+        // Если после firstExpr идёт ',', значит список из нескольких элементов
+        std::vector<std::unique_ptr<Expression>> elems;
+        elems.push_back(std::move(firstExpr));
+
+        while (match(TokenType::COMMA)) {
+            // после ',' может быть либо ',' (пустой элемент, редкий случай) либо выражение
+            if (peek().type == TokenType::RBRACKET) {
+                // допустим, [a, b, ] → последний элемент считается пустым
+                // в Python такое обычно не пишут, но мы просто не кладём ничего
+                break;
+            }
+            auto nextExpr = parse_expression();
+            elems.push_back(std::move(nextExpr));
+        }
+
         extract(TokenType::RBRACKET);
         return std::make_unique<ListExpr>(std::move(elems), list_line);
     }
-    // Словарь или множество { ... }
+
+    // Словарь 
     else if (token.type == TokenType::LBRACE) {
         Token leftBrace = advance();
         int brace_line = leftBrace.line;
         if (peek().type == TokenType::RBRACE) {
-            // Пустой dict или set? В Python '{}' — пустой dict. 
-            // Чтобы отличать set() и {}, можно на уровне semantics,
-            // но здесь положим в DictExpr пустой список пар.
-            advance(); // съели '}'
+            advance();
             return std::make_unique<DictExpr>(
-                std::vector<std::pair<std::unique_ptr<Expression>, std::unique_ptr<Expression>>>{},
+                std::vector<std::pair<
+                    std::unique_ptr<Expression>, 
+                    std::unique_ptr<Expression>
+                >>{},
                 brace_line
             );
         }
 
-        // Смотрим дальше: есть ли ':' — тогда это словарь, иначе — множество
-        // Сначала парсим первое выражение
-        expression first = parse_expression();
+        auto firstKey = parse_expression();
+        extract(TokenType::COLON);
+        auto firstVal = parse_expression();
 
-        if (match(TokenType::COLON)) {
-            // dict
-            std::vector<std::pair<std::unique_ptr<Expression>, std::unique_ptr<Expression>>> items;
-            expression first_val = parse_expression();
-            items.emplace_back(std::move(first), std::move(first_val));
+        // 3) Если после valueExpr идёт ключевое слово FOR — это dict‐comprehension
+        if (!is_end() && peek().type == TokenType::FOR) {
+            advance(); // съели 'for'
+            Token varTok = extract(TokenType::ID);
+            std::string iterVar = varTok.value;
+            extract(TokenType::IN);
+            auto iterable = parse_expression();
+            extract(TokenType::RBRACE);
 
-            while (match(TokenType::COMMA)) {
-                expression key = parse_expression();
-                extract(TokenType::COLON);
-                expression val = parse_expression();
-                items.emplace_back(std::move(key), std::move(val));
-            }
-            extract(TokenType::RBRACE);
-            return std::make_unique<DictExpr>(std::move(items), brace_line);
+            return std::make_unique<DictComp>(
+                std::move(firstKey),
+                std::move(firstVal),
+                iterVar,
+                std::move(iterable),
+                brace_line
+            );
         }
-        else {
-            // set
-            std::vector<std::unique_ptr<Expression>> elems;
-            elems.push_back(std::move(first));
-            while (match(TokenType::COMMA)) {
-                elems.push_back(parse_expression());
+
+        std::vector<std::pair<std::unique_ptr<Expression>, std::unique_ptr<Expression>>> items;
+        items.emplace_back(std::move(firstKey), std::move(firstVal));
+
+        while (match(TokenType::COMMA)) {
+            // если сразу '}' — закончили
+            if (peek().type == TokenType::RBRACE) {
+                break;
             }
-            extract(TokenType::RBRACE);
-            return std::make_unique<SetExpr>(std::move(elems), brace_line);
+            auto k = parse_expression();
+            extract(TokenType::COLON);
+            auto v = parse_expression();
+            items.emplace_back(std::move(k), std::move(v));
         }
+
+        extract(TokenType::RBRACE);
+        return std::make_unique<DictExpr>(std::move(items), brace_line);
     }
     else {
         throw std::runtime_error(
@@ -1049,4 +1163,52 @@ expression Parser::parse_postfix(expression given_id) {
         }
     }
     return given_id;
+}
+
+
+std::unique_ptr<LenStat> Parser::parse_len_stat() {
+    // Съедаем токен LEN
+    Token lenTok = extract(TokenType::LEN);
+    int lineNum = lenTok.line;
+
+    extract(TokenType::LPAREN);
+    auto exprNode = parse_expression();
+    extract(TokenType::RPAREN);
+    extract(TokenType::NEWLINE);
+
+    return std::make_unique<LenStat>(std::move(exprNode), lineNum);
+}
+
+// -------------------------
+// <dir_st> = 'dir' <expr> NEWLINE
+// -------------------------
+std::unique_ptr<DirStat> Parser::parse_dir_stat() {
+    // Съедаем токен DIR
+    Token dirTok = extract(TokenType::DIR);
+    int lineNum = dirTok.line;
+
+    extract(TokenType::LPAREN);
+    auto exprNode = parse_expression();
+    extract(TokenType::RPAREN);
+    extract(TokenType::NEWLINE);
+
+    // Возвращаем узел DirStat
+    return std::make_unique<DirStat>(std::move(exprNode), lineNum);
+}
+
+// -------------------------
+// <enumerate_st> = 'enumerate' <expr> NEWLINE
+// -------------------------
+std::unique_ptr<EnumerateStat> Parser::parse_enumerate_stat() {
+    // Съедаем токен ENUMERATE
+    Token enumTok = extract(TokenType::ENUMERATE);
+    int lineNum = enumTok.line;
+
+    extract(TokenType::LPAREN);
+    auto exprNode = parse_expression();
+    extract(TokenType::RPAREN);
+    extract(TokenType::NEWLINE);
+
+    // Возвращаем узел EnumerateStat
+    return std::make_unique<EnumerateStat>(std::move(exprNode), lineNum);
 }

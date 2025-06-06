@@ -94,6 +94,174 @@ Executor::Executor() : scopes(), reporter() {
         }
     );
     scopes.insert(Symbol{"range", SymbolType::BuiltinFunction, range_fn, nullptr});
+
+    // 3) len(obj) — возвращает «длину» объекта
+    //    Будем поддерживать: строки, списки, словари, множества. Для всего остального — ошибка.
+    auto len_fn = std::make_shared<PyBuiltinFunction>(
+        "len",
+        [](const std::vector<ObjectPtr>& args) {
+            // Проверяем, что передали ровно 1 аргумент
+            if (args.size() != 1) {
+                throw RuntimeError("TypeError: len() takes exactly one argument (" +
+                    std::to_string(args.size()) + " given)");
+            }
+            ObjectPtr obj = args[0];
+            // 1) Если строка
+            if (auto s = std::dynamic_pointer_cast<PyString>(obj)) {
+                int length = static_cast<int>(s->get().size());
+                return std::make_shared<PyInt>(length);
+            }
+            // 2) Если список
+            if (auto lst = std::dynamic_pointer_cast<PyList>(obj)) {
+                int length = static_cast<int>(lst->getElements().size());
+                return std::make_shared<PyInt>(length);
+            }
+            // 3) Если словарь
+            if (auto d = std::dynamic_pointer_cast<PyDict>(obj)) {
+                // repr() у словаря даёт что-то вроде "{...}", но чтобы взять
+                // реальное количество элементов, лучше обратиться к внутреннему контейнеру.
+                int length = static_cast<int>(d->getItems().size());
+                return std::make_shared<PyInt>(length);
+            }
+            // 4) Если множество
+            if (auto st = std::dynamic_pointer_cast<PySet>(obj)) {
+                int length = static_cast<int>(st->getElements().size());
+                return std::make_shared<PyInt>(length);
+            }
+            // 5) Если всё остальное — бросаем TypeError
+            std::string tname;
+            if (std::dynamic_pointer_cast<PyInt>(obj))    tname = "int";
+            else if (std::dynamic_pointer_cast<PyFloat>(obj))  tname = "float";
+            else if (std::dynamic_pointer_cast<PyBool>(obj))   tname = "bool";
+            else if (std::dynamic_pointer_cast<PyFunction>(obj)) tname = "function";
+            else tname = "object";
+            throw RuntimeError("TypeError: object of type '" + tname + "' has no len()");
+        }
+    );
+    scopes.insert(Symbol{"len", SymbolType::BuiltinFunction, len_fn, nullptr});
+
+    // 4) dir(obj) — возвращает список «имён» элементов/ключей/символов.
+    //    У нас мы сделаем так:
+    //     - для списков вернём [ "0", "1", "2", ... ] (строки с индексами)
+    //     - для словарей — list строковых repr() всех ключей
+    //     - для строк — вернём по символам (каждый символ как строку длины 1)
+    //     - для множеств — по repr() каждого элемента
+    //     - для всего остального — пустой список
+    auto dir_fn = std::make_shared<PyBuiltinFunction>(
+        "dir",
+        [](const std::vector<ObjectPtr>& args) {
+            if (args.size() != 1) {
+                throw RuntimeError("TypeError: dir() takes exactly one argument (" +
+                    std::to_string(args.size()) + " given)");
+            }
+            ObjectPtr obj = args[0];
+            // Результируемый вектор строк
+            std::vector<ObjectPtr> names;
+
+            // 1) Если список — возвращаем индексы в виде строк
+            if (auto lst = std::dynamic_pointer_cast<PyList>(obj)) {
+                int n = static_cast<int>(lst->getElements().size());
+                for (int i = 0; i < n; ++i) {
+                    names.push_back(std::make_shared<PyString>(std::to_string(i)));
+                }
+                return std::make_shared<PyList>(std::move(names));
+            }
+            // 2) Если словарь — возвращаем repr() ключей
+            if (auto d = std::dynamic_pointer_cast<PyDict>(obj)) {
+                // Получаем пары ключ->значение, но нам нужны лишь ключи
+                for (auto &kv : d->getItems()) {
+                    ObjectPtr keyObj = kv.first;
+                    // Приводим ключ к repr() и кладём как PyString
+                    names.push_back(std::make_shared<PyString>(keyObj->repr()));
+                }
+                return std::make_shared<PyList>(std::move(names));
+            }
+            // 3) Если строка — возвращаем по одному символу
+            if (auto s = std::dynamic_pointer_cast<PyString>(obj)) {
+                const std::string &str = s->get();
+                for (char c : str) {
+                    std::string ch(1, c);
+                    names.push_back(std::make_shared<PyString>(ch));
+                }
+                return std::make_shared<PyList>(std::move(names));
+            }
+            // 4) Если множество — возвращаем repr() каждого элемента
+            if (auto st = std::dynamic_pointer_cast<PySet>(obj)) {
+                for (auto &el : st->getElements()) {
+                    names.push_back(std::make_shared<PyString>(el->repr()));
+                }
+                return std::make_shared<PyList>(std::move(names));
+            }
+            // 5) Во всех остальных случаях возвращаем пустой список
+            return std::make_shared<PyList>(std::vector<ObjectPtr>{});
+        }
+    );
+    scopes.insert(Symbol{"dir", SymbolType::BuiltinFunction, dir_fn, nullptr});
+
+    // 5) enumerate(iterable) — возвращаем список пар [index, element].
+    //    Реализуем для списков, строк и словарей (по ключам). Во всех остальных — TypeError.
+    auto enumerate_fn = std::make_shared<PyBuiltinFunction>(
+        "enumerate",
+        [](const std::vector<ObjectPtr>& args) {
+            if (args.size() != 1) {
+                throw RuntimeError("TypeError: enumerate() takes exactly one argument (" +
+                    std::to_string(args.size()) + " given)");
+            }
+            ObjectPtr obj = args[0];
+            std::vector<ObjectPtr> result;  // Будем класть сюда серии [индекс, элемент]
+
+            // 1) Если список
+            if (auto lst = std::dynamic_pointer_cast<PyList>(obj)) {
+                const auto &elems = lst->getElements();
+                for (size_t i = 0; i < elems.size(); ++i) {
+                    // Составляем пару [ i, elems[i] ]
+                    std::vector<ObjectPtr> pairVec;
+                    pairVec.reserve(2);
+                    pairVec.push_back(std::make_shared<PyInt>(static_cast<int>(i)));
+                    pairVec.push_back(elems[i]);
+                    // Сами пары будем хранить как PyList из двух элементов
+                    result.push_back(std::make_shared<PyList>(std::move(pairVec)));
+                }
+                return std::make_shared<PyList>(std::move(result));
+            }
+            // 2) Если строка — итерируем по символам
+            if (auto s = std::dynamic_pointer_cast<PyString>(obj)) {
+                const std::string &str = s->get();
+                for (size_t i = 0; i < str.size(); ++i) {
+                    std::vector<ObjectPtr> pairVec;
+                    pairVec.reserve(2);
+                    pairVec.push_back(std::make_shared<PyInt>(static_cast<int>(i)));
+                    // Второй элемент — символ как PyString
+                    pairVec.push_back(std::make_shared<PyString>(std::string(1, str[i])));
+                    result.push_back(std::make_shared<PyList>(std::move(pairVec)));
+                }
+                return std::make_shared<PyList>(std::move(result));
+            }
+            // 3) Если словарь — итерируем по ключам, возвращаем пары [index, key]
+            if (auto d = std::dynamic_pointer_cast<PyDict>(obj)) {
+                const auto &items = d->getItems();
+                size_t idx = 0;
+                for (auto &kv : items) {
+                    ObjectPtr keyObj = kv.first;
+                    std::vector<ObjectPtr> pairVec;
+                    pairVec.reserve(2);
+                    pairVec.push_back(std::make_shared<PyInt>(static_cast<int>(idx)));
+                    pairVec.push_back(keyObj);
+                    result.push_back(std::make_shared<PyList>(std::move(pairVec)));
+                    ++idx;
+                }
+                return std::make_shared<PyList>(std::move(result));
+            }
+            // 4) В остальных случаях — ошибка типа
+            std::string tname;
+            if (std::dynamic_pointer_cast<PyInt>(obj))    tname = "int";
+            else if (std::dynamic_pointer_cast<PyFloat>(obj))  tname = "float";
+            else if (std::dynamic_pointer_cast<PyBool>(obj))   tname = "bool";
+            else tname = "object";
+            throw RuntimeError("TypeError: '" + tname + "' object is not iterable");
+        }
+    );
+    scopes.insert(Symbol{"enumerate", SymbolType::BuiltinFunction, enumerate_fn, nullptr});
 }
 
 std::shared_ptr<Object> Executor::evaluate(Expression &expr) {
@@ -1765,6 +1933,10 @@ void Executor::visit(PrintStat &node) {
     std::cout << val->repr() << std::endl;
 }
 
+void Executor::visit(LenStat &node) {}
+void Executor::visit(DirStat &node) {}
+void Executor::visit(EnumerateStat &node) {}
+
 
 void Executor::visit(ClassDecl &node) {
 
@@ -1923,4 +2095,274 @@ void Executor::visit(ClassDecl &node) {
     //     и с точки зрения AST это выражение возвращает сам объект класса,
     //     т. е. «результатом» Visit(ClassDecl) должно быть classObj.
     push_value(classObj);
+}
+
+
+void Executor::visit(ListComp &node) {
+    // Шаг 1: вычисляем «итерируемый» объект
+    node.iterableExpr->accept(*this);
+    ObjectPtr iterableVal = pop_value();
+    if (!iterableVal) {
+        throw RuntimeError(
+            "Line " + std::to_string(node.line) 
+            + ": internal error: iterable evaluated to null"
+        );
+    }
+
+    // Шаг 2: выделяем вектор «сырых» элементов, по которым будем итерироваться.
+    // Поддерживаем PyList и PyString. Всё остальное — не итерируемый.
+    std::vector<ObjectPtr> rawElems;
+    if (auto listObj = std::dynamic_pointer_cast<PyList>(iterableVal)) {
+        rawElems = listObj->getElements();
+    }
+    else if (auto strObj = std::dynamic_pointer_cast<PyString>(iterableVal)) {
+        const std::string &s = strObj->get();
+        rawElems.reserve(s.size());
+        for (char c : s) {
+            rawElems.push_back(std::make_shared<PyString>(std::string(1, c)));
+        }
+    }
+    else {
+        // Пробуем вызвать __iter__/__getitem__, но для простоты бросим TypeError:
+        std::string tname = deduceTypeName(iterableVal);
+        throw RuntimeError(
+            "Line " + std::to_string(node.line)
+            + " TypeError: '" + tname + "' object is not iterable"
+        );
+    }
+
+    // Шаг 3: для каждого элемента «итерируемого»:
+    //  a) создаём символ в локальном scope с именем node.iterVar → присваиваем текущий элемент
+    //  b) вычисляем valueExpr (там может быть обращение к iterVar)
+    //  c) сохраняем результат в вектор resultElems
+    std::vector<ObjectPtr> resultElems;
+    resultElems.reserve(rawElems.size());
+
+    for (size_t i = 0; i < rawElems.size(); ++i) {
+        ObjectPtr element = rawElems[i];
+
+        // 3.a) Если имя iterVar ещё не было объявлено в локальном scope, мы вставляем его:
+        if (!scopes.lookup_local(node.iterVar)) {
+            Symbol sym;
+            sym.name  = node.iterVar;
+            sym.type  = SymbolType::Variable;
+            sym.value = nullptr;
+            sym.decl  = nullptr; // было бы nice указывать на node, но не критично
+            scopes.insert(sym);
+        }
+        // Кладём в локальный scope текущее значение element:
+        Symbol *iterSym = scopes.lookup_local(node.iterVar);
+        iterSym->value = element;
+
+        // 3.b) Теперь вычисляем valueExpr:
+        node.valueExpr->accept(*this);
+        ObjectPtr val = pop_value();
+        if (!val) {
+            throw RuntimeError(
+                "Line " + std::to_string(node.line)
+                + ": internal error: list comprehension element evaluated to null"
+            );
+        }
+        resultElems.push_back(val);
+    }
+
+    // Шаг 4: после всех итераций собираем PyList из resultElems
+    auto listObj = std::make_shared<PyList>(std::move(resultElems));
+    push_value(listObj);
+}
+
+
+void Executor::visit(DictComp &node) {
+    // Шаг 1: вычисляем iterable
+    node.iterableExpr->accept(*this);
+    ObjectPtr iterableVal = pop_value();
+    if (!iterableVal) {
+        throw RuntimeError(
+            "Line " + std::to_string(node.line)
+            + ": internal error: iterable evaluated to null"
+        );
+    }
+
+    // Шаг 2: собираем сырой вектор элементов
+    std::vector<ObjectPtr> rawElems;
+    if (auto listObj = std::dynamic_pointer_cast<PyList>(iterableVal)) {
+        rawElems = listObj->getElements();
+    }
+    else if (auto strObj = std::dynamic_pointer_cast<PyString>(iterableVal)) {
+        const std::string &s = strObj->get();
+        rawElems.reserve(s.size());
+        for (char c : s) {
+            rawElems.push_back(std::make_shared<PyString>(std::string(1, c)));
+        }
+    }
+    else {
+        std::string tname = deduceTypeName(iterableVal);
+        throw RuntimeError(
+            "Line " + std::to_string(node.line)
+            + " TypeError: '" + tname + "' object is not iterable"
+        );
+    }
+
+    // Шаг 3: создаём новый пустой словарь, потом наполняем его
+    auto dictObj = std::make_shared<PyDict>();
+
+    for (size_t i = 0; i < rawElems.size(); ++i) {
+        ObjectPtr element = rawElems[i];
+
+        // 3.a) «вставляем» в локальный scope iterVar = element
+        if (!scopes.lookup_local(node.iterVar)) {
+            Symbol sym;
+            sym.name  = node.iterVar;
+            sym.type  = SymbolType::Variable;
+            sym.value = nullptr;
+            sym.decl  = nullptr;
+            scopes.insert(sym);
+        }
+        Symbol *iterSym = scopes.lookup_local(node.iterVar);
+        iterSym->value = element;
+
+        // 3.b) вычисляем keyExpr
+        node.keyExpr->accept(*this);
+        ObjectPtr keyObj = pop_value();
+        if (!keyObj) {
+            throw RuntimeError(
+                "Line " + std::to_string(node.line)
+                + ": internal error: dict comprehension key evaluated to null"
+            );
+        }
+
+        // 3.c) вычисляем valueExpr
+        node.valueExpr->accept(*this);
+        ObjectPtr valueObj = pop_value();
+        if (!valueObj) {
+            throw RuntimeError(
+                "Line " + std::to_string(node.line)
+                + ": internal error: dict comprehension value evaluated to null"
+            );
+        }
+
+        // 3.d) вставляем в dictObj
+        try {
+            dictObj->__setitem__(keyObj, valueObj);
+        }
+        catch (const RuntimeError &err) {
+            throw RuntimeError(
+                "Line " + std::to_string(node.line)
+                + " TypeError: " + err.what()
+            );
+        }
+    }
+
+    push_value(dictObj);
+}
+
+void Executor::visit(TupleComp &node) {
+    // Почти точь-в-точь как в ListComp
+    node.iterableExpr->accept(*this);
+    ObjectPtr iterableVal = pop_value();
+    if (!iterableVal) {
+        throw RuntimeError(
+            "Line " + std::to_string(node.line)
+            + ": internal error: iterable evaluated to null"
+        );
+    }
+
+    std::vector<ObjectPtr> rawElems;
+    if (auto listObj = std::dynamic_pointer_cast<PyList>(iterableVal)) {
+        rawElems = listObj->getElements();
+    }
+    else if (auto strObj = std::dynamic_pointer_cast<PyString>(iterableVal)) {
+        const std::string &s = strObj->get();
+        rawElems.reserve(s.size());
+        for (char c : s) {
+            rawElems.push_back(std::make_shared<PyString>(std::string(1, c)));
+        }
+    }
+    else {
+        std::string tname = deduceTypeName(iterableVal);
+        throw RuntimeError(
+            "Line " + std::to_string(node.line)
+            + " TypeError: '" + tname + "' object is not iterable"
+        );
+    }
+
+    std::vector<ObjectPtr> resultElems;
+    resultElems.reserve(rawElems.size());
+
+    for (size_t i = 0; i < rawElems.size(); ++i) {
+        ObjectPtr element = rawElems[i];
+        if (!scopes.lookup_local(node.iterVar)) {
+            Symbol sym;
+            sym.name  = node.iterVar;
+            sym.type  = SymbolType::Variable;
+            sym.value = nullptr;
+            sym.decl  = nullptr;
+            scopes.insert(sym);
+        }
+        Symbol *iterSym = scopes.lookup_local(node.iterVar);
+        iterSym->value = element;
+
+        node.valueExpr->accept(*this);
+        ObjectPtr val = pop_value();
+        if (!val) {
+            throw RuntimeError(
+                "Line " + std::to_string(node.line)
+                + ": internal error: tuple comprehension element evaluated to null"
+            );
+        }
+        resultElems.push_back(val);
+    }
+
+    // вместо PyTuple просто «отдаём» PyList
+    auto listObj = std::make_shared<PyList>(std::move(resultElems));
+    push_value(listObj);
+}
+
+
+// ------------------------------------
+// visit(LambdaExpr):
+// Когда мы видим «lambda x,y: <expr>», мы хотим вернуть
+// объект типа PyFunction, который при вызове посчитает <expr>.
+// ------------------------------------
+void Executor::visit(LambdaExpr &node) {
+    // 1) Сразу «вырвем» из LambdaExpr само выражение тела (move),
+    //    чтобы не вычислять его на этом этапе, а передать в новый FuncDecl.
+    //    После этого node.body станет nullptr (мы больше к нему не обратимся —
+    //    лямбда создаётся только один раз).
+    std::unique_ptr<Expression> bodyExpr = std::move(node.body);
+
+    // 2) Оборачиваем тело лямбды в одну-единственную инструкцию ReturnStat,
+    //    иначе PyFunction не «увидит» какое значение возвращать.
+    //    ReturnStat сам бросит ReturnException, когда встретится во время исполнения.
+    auto returnStmt = std::make_unique<ReturnStat>(std::move(bodyExpr), node.line);
+
+    // 3) Создадим «временный» FuncDecl. Назовём его "<lambda>", 
+    //    перенесём туда список параметров (node.params) и наш returnStmt.
+    //    (По факту мы роняем все default-параметры, они у лямбды не поддерживаются.)
+    FuncDecl *lambdaDecl = new FuncDecl(
+        "<lambda>",                     // имя функции (строго говоря, оно не используется)
+        node.params,                    // параметры (имена)
+        std::vector<std::pair<std::string, std::unique_ptr<Expression>>>{}, // default-параметры пустые
+        std::move(returnStmt),          // тело — это единственный ReturnStat
+        node.line                       // строка, где встретилась лямбда
+    );
+
+    // 4) Создаём объект PyFunction, передавая ему:
+    //    - имя "<lambda>"
+    //    - указатель на lambdaDecl (AST-узел)
+    //    - текущее лексическое окружение (то, что лежит в scopes.currentTable())
+    //    - вектор имён позиционных параметров
+    //    - пустой вектор default-значений (их у нас нет)
+    auto lambdaObj = std::make_shared<PyFunction>(
+        "<lambda>",
+        lambdaDecl,
+        scopes.currentTable(),
+        node.params,
+        std::vector<ObjectPtr>{}     // default-значения (пустой список)
+    );
+
+    // 5) Кладём получившийся объект PyFunction на стек значений.
+    //    Когда кто-нибудь вызовет этот объект, в нём запустится
+    //    лексическое окружение, и выполнятся наши ReturnStat-ы.
+    push_value(lambdaObj);
 }

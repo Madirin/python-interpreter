@@ -626,3 +626,224 @@ void ASTPrinterVisitor::visit(ClassDecl &node) {
 
     indentLevel--;
 }
+
+
+void ASTPrinterVisitor::visit(ListComp &node) {
+    // Печатаем строку, указывая тип узла и номер строки
+    append(indent() + "ListComp (line = " + std::to_string(node.line) + "):\n");
+    indentLevel++;
+
+    // 1) Печатаем, что за выражение создаётся на каждой итерации
+    append(indent() + "Value expression:\n");
+    indentLevel++;
+    if (node.valueExpr) {
+        node.valueExpr->accept(*this);
+    } else {
+        append(indent() + "(null)\n");
+    }
+    indentLevel--;
+
+    // 2) Печатаем имя переменной-итератора
+    append(indent() + "Iterator variable: \"" + node.iterVar + "\"\n");
+
+    // 3) Печатаем, по чему итерируемся
+    append(indent() + "Iterable expression:\n");
+    indentLevel++;
+    if (node.iterableExpr) {
+        node.iterableExpr->accept(*this);
+    } else {
+        append(indent() + "(null)\n");
+    }
+    indentLevel--;
+
+    indentLevel--;
+}
+
+
+// ------------------------------------
+// visit(DictComp):
+// Компрехеншен словаря: { keyExpr : valueExpr for iterVar in iterableExpr }
+// ------------------------------------
+void ASTPrinterVisitor::visit(DictComp &node) {
+    // Печатаем строку, указывая тип узла и номер строки
+    append(indent() + "DictComp (line = " + std::to_string(node.line) + "):\n");
+    indentLevel++;
+
+    // 1) Ключевое выражение
+    append(indent() + "Key expression:\n");
+    indentLevel++;
+    if (node.keyExpr) {
+        node.keyExpr->accept(*this);
+    } else {
+        append(indent() + "(null)\n");
+    }
+    indentLevel--;
+
+    // 2) Выражение-значение
+    append(indent() + "Value expression:\n");
+    indentLevel++;
+    if (node.valueExpr) {
+        node.valueExpr->accept(*this);
+    } else {
+        append(indent() + "(null)\n");
+    }
+    indentLevel--;
+
+    // 3) Имя переменной-итератора
+    append(indent() + "Iterator variable: \"" + node.iterVar + "\"\n");
+
+    // 4) Выражение iterable
+    append(indent() + "Iterable expression:\n");
+    indentLevel++;
+    if (node.iterableExpr) {
+        node.iterableExpr->accept(*this);
+    } else {
+        append(indent() + "(null)\n");
+    }
+    indentLevel--;
+
+    indentLevel--;
+}
+
+
+// ------------------------------------
+// visit(TupleComp):
+// Компрехеншен кортежа: ( valueExpr for iterVar in iterableExpr )
+// (внутри реализован как список)
+// ------------------------------------
+void ASTPrinterVisitor::visit(TupleComp &node) {
+    // Печатаем строку, указывая тип узла и номер строки
+    append(indent() + "TupleComp (line = " + std::to_string(node.line) + "):\n");
+    indentLevel++;
+
+    // 1) Печатаем выражение, которое будет вычисляться и добавляться в результирующую коллекцию
+    append(indent() + "Value expression:\n");
+    indentLevel++;
+    if (node.valueExpr) {
+        node.valueExpr->accept(*this);
+    } else {
+        append(indent() + "(null)\n");
+    }
+    indentLevel--;
+
+    // 2) Имя переменной-итератора
+    append(indent() + "Iterator variable: \"" + node.iterVar + "\"\n");
+
+    // 3) Выражение iterable
+    append(indent() + "Iterable expression:\n");
+    indentLevel++;
+    if (node.iterableExpr) {
+        node.iterableExpr->accept(*this);
+    } else {
+        append(indent() + "(null)\n");
+    }
+    indentLevel--;
+
+    indentLevel--;
+}
+
+
+// В файле printer.cpp, внутри класса ASTPrinterVisitor, добавляем следующий метод:
+
+void ASTPrinterVisitor::visit(LambdaExpr &node) {
+    // Печатаем саму лямбда-функцию: указываем, что это LambdaExpr и на какой строке она начинается.
+    append(indent() + "LambdaExpr (line = " + std::to_string(node.line) + "):\n");
+
+    // Переходим на уровень выше вложенности для параметров и тела
+    indentLevel++;
+
+    // Если у лямбды есть параметры, выводим их в понятном виде
+    if (!node.params.empty()) {
+        // Печатаем заголовок для списка параметров
+        append(indent() + "Parameters:\n");
+        // Увеличиваем отступ, чтобы параметры визуально были вложены
+        indentLevel++;
+        // Перебираем все имена параметров
+        for (size_t i = 0; i < node.params.size(); ++i) {
+            const std::string &paramName = node.params[i];
+            // Печатаем каждое имя параметра на своей строке
+            append(indent() + paramName + "\n");
+        }
+        // Уменьшаем отступ после списка параметров
+        indentLevel--;
+    }
+    else {
+        // Если у лямбды нет параметров (пустая lambda), можно явно это отметить
+        append(indent() + "(no parameters)\n");
+    }
+
+    // Теперь печатаем тело лямбды
+    append(indent() + "Body:\n");
+    // Увеличиваем отступ перед выводом тела
+    indentLevel++;
+    if (node.body) {
+        // Делегируем печать того, что внутри body (Expression)
+        node.body->accept(*this);
+    }
+    else {
+        // На всякий случай, если тело вдруг отсутствует (например, nullptr),
+        // выводим просто пустое место или None
+        append(indent() + "(empty body)\n");
+    }
+    // Снижаем отступ после тела
+    indentLevel--;
+
+    // Возвращаемся к уровню вложенности, существовавшему перед visit(LambdaExpr)
+    indentLevel--;
+}
+
+void ASTPrinterVisitor::visit(LenStat &node) {
+    // Печатаем сам узел LenStat с указанием строки
+    // indent() вернёт нужное количество пробелов согласно текущему уровню вложенности
+    append(indent() + "LenStat (line = " + std::to_string(node.line) + "):\n");
+
+    // Заузливаемся на один уровень вложенности, чтобы распечатать вложенное выражение
+    indentLevel++;
+
+    // Проверяем, что expr действительно указано (по идее, должно быть всегда)
+    if (node.expr) {
+        // Распечатываем само выражение, делегируя дальнейший вывод подходящему visit(...)
+        node.expr->accept(*this);
+    }
+
+    // Возвращаемся на предыдущий уровень вложенности
+    indentLevel--;
+}
+
+// ------------------------------------
+// visit(DirStat):
+// Оператор dir <expr>
+// ------------------------------------
+void ASTPrinterVisitor::visit(DirStat &node) {
+    // Печатаем сам узел DirStat с указанием строки
+    append(indent() + "DirStat (line = " + std::to_string(node.line) + "):\n");
+
+    // Погружаемся внутрь, чтобы распечатать вложенное выражение
+    indentLevel++;
+
+    if (node.expr) {
+        node.expr->accept(*this);
+    }
+
+    // Выход на уровень выше
+    indentLevel--;
+}
+
+// ------------------------------------
+// visit(EnumerateStat):
+// Оператор enumerate <expr>
+// ------------------------------------
+void ASTPrinterVisitor::visit(EnumerateStat &node) {
+    // Печатаем сам узел EnumerateStat с указанием строки
+    append(indent() + "EnumerateStat (line = " + std::to_string(node.line) + "):\n");
+
+    // Переходим внутрь для печати выражения
+    indentLevel++;
+
+    if (node.expr) {
+        node.expr->accept(*this);
+    }
+
+    // Возвращаемся к предыдущему уровню
+    indentLevel--;
+}

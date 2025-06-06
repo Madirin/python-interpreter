@@ -48,6 +48,17 @@ public:
     virtual void visit(class SetExpr  &node) = 0;
     virtual void visit(class DictExpr &node) = 0;
     virtual void visit(class ClassDecl &node) = 0;
+
+    // list, dict, tuple comprehensions
+    virtual void visit(class ListComp &node) = 0;
+    virtual void visit(class DictComp &node) = 0;
+    virtual void visit(class TupleComp &node) = 0;
+
+    virtual void visit(class LambdaExpr &node) = 0;
+
+    virtual void visit(class LenStat &node) = 0;
+    virtual void visit(class DirStat &node) = 0;
+    virtual void visit(class EnumerateStat &node) = 0;
 };
 
 // Базовый узел AST
@@ -741,6 +752,156 @@ public:
         , fields(std::move(fields))
         , methods(std::move(methods))
         , line(line)
+    {}
+
+    virtual void accept(ASTVisitor &visitor) override {
+        visitor.visit(*this);
+    }
+};
+
+
+class ListComp : public Expression {
+public:
+    // пример: [ <valueExpr> for <iterVar> in <iterableExpr> ]
+    std::unique_ptr<Expression> valueExpr;     // это то, что мы кладём в список
+    std::string iterVar;                       // имя переменной «x»
+    std::unique_ptr<Expression> iterableExpr;   // это то, по чему итерируемся (список/строка/и т.д.)
+    int line;                                  // строка, где стоит '['
+
+    ListComp(std::unique_ptr<Expression> valueExpr,
+             const std::string &iterVar,
+             std::unique_ptr<Expression> iterableExpr,
+             int line)
+        : valueExpr(std::move(valueExpr))
+        , iterVar(iterVar)
+        , iterableExpr(std::move(iterableExpr))
+        , line(line)
+    {}
+
+    virtual void accept(ASTVisitor &visitor) override {
+        visitor.visit(*this);
+    }
+};
+
+// -------------------------
+// <dict_comp> = '{' <expr> ':' <expr> 'for' <id> 'in' <expr> '}'
+// -------------------------
+class DictComp : public Expression {
+public:
+    // пример: { <keyExpr> : <valueExpr> for <iterVar> in <iterableExpr> }
+    std::unique_ptr<Expression> keyExpr;       // это выражение для ключа
+    std::unique_ptr<Expression> valueExpr;     // выражение для значения
+    std::string iterVar;                       // имя переменной «x»
+    std::unique_ptr<Expression> iterableExpr;   // объект, по которому итерируемся
+    int line;                                  // строка, где стоит '{'
+
+    DictComp(std::unique_ptr<Expression> keyExpr,
+             std::unique_ptr<Expression> valueExpr,
+             const std::string &iterVar,
+             std::unique_ptr<Expression> iterableExpr,
+             int line)
+        : keyExpr(std::move(keyExpr))
+        , valueExpr(std::move(valueExpr))
+        , iterVar(iterVar)
+        , iterableExpr(std::move(iterableExpr))
+        , line(line)
+    {}
+
+    virtual void accept(ASTVisitor &visitor) override {
+        visitor.visit(*this);
+    }
+};
+
+// -------------------------
+// <tuple_comp> = '(' <expr> 'for' <id> 'in' <expr> ')'
+// -------------------------
+// У нас пока нет реального PyTuple, поэтому просто создадим список.
+class TupleComp : public Expression {
+public:
+    // аналогично ListComp, просто в круглых скобках
+    std::unique_ptr<Expression> valueExpr;
+    std::string iterVar;
+    std::unique_ptr<Expression> iterableExpr;
+    int line;  // строка, где стоит '('
+
+    TupleComp(std::unique_ptr<Expression> valueExpr,
+              const std::string &iterVar,
+              std::unique_ptr<Expression> iterableExpr,
+              int line)
+        : valueExpr(std::move(valueExpr))
+        , iterVar(iterVar)
+        , iterableExpr(std::move(iterableExpr))
+        , line(line)
+    {}
+
+    virtual void accept(ASTVisitor &visitor) override {
+        visitor.visit(*this);
+    }
+};
+
+class LambdaExpr : public Expression {
+public:
+    // Список имен параметров, например: ["x"], или ["x","y"], или пустой список (lambda : 42)
+    std::vector<std::string> params;
+    // Одно-единственное выражение, которое возвращается (само тело лямбды)
+    std::unique_ptr<Expression> body;
+    int line;  // строка, где встретилось слово 'lambda'
+
+    LambdaExpr(std::vector<std::string> params,
+               std::unique_ptr<Expression> body,
+               int line)
+        : params(std::move(params))
+        , body(std::move(body))
+        , line(line)
+    {}
+
+    virtual void accept(ASTVisitor &visitor) override {
+        visitor.visit(*this);
+    }
+};
+
+
+class LenStat : public Statement {
+public:
+    std::unique_ptr<Expression> expr;  // аргумент len
+    int line;  // строка, где стоит «len»
+
+    LenStat(std::unique_ptr<Expression> expr, int line)
+        : expr(std::move(expr)), line(line)
+    {}
+
+    virtual void accept(ASTVisitor &visitor) override {
+        visitor.visit(*this);
+    }
+};
+
+// -------------------------
+// <dir_st> = 'dir' <expr> NEWLINE
+// -------------------------
+class DirStat : public Statement {
+public:
+    std::unique_ptr<Expression> expr;  // аргумент dir
+    int line;  // строка, где стоит «dir»
+
+    DirStat(std::unique_ptr<Expression> expr, int line)
+        : expr(std::move(expr)), line(line)
+    {}
+
+    virtual void accept(ASTVisitor &visitor) override {
+        visitor.visit(*this);
+    }
+};
+
+// -------------------------
+// <enumerate_st> = 'enumerate' <expr> NEWLINE
+// -------------------------
+class EnumerateStat : public Statement {
+public:
+    std::unique_ptr<Expression> expr;  // аргумент enumerate
+    int line;  // строка, где стоит «enumerate»
+
+    EnumerateStat(std::unique_ptr<Expression> expr, int line)
+        : expr(std::move(expr)), line(line)
     {}
 
     virtual void accept(ASTVisitor &visitor) override {
